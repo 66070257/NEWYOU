@@ -1,33 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { Box, Button, TextField, Typography } from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../database/firebase";
+import CommentsSection from "../components/CommentsSection";
 
-const articleData = {
-    1: {
-        author: "Argoon",
-        handle: "@daydreamer_22",
-        date: "Jan 01, 26",
-        title: "เริ่มออกกำลังกายวันแรก ไม่ได้ยากอย่างที่คิด",
-        content: "ก่อนหน้านี้ฉันคิดว่าการออกกำลังกายต้องจริงจังและเหนื่อยมาก\nแต่วันแรกฉันแค่เดินเร็ว 20 นาที\nแม้จะเหนื่อยนิดหน่อย แต่รู้สึกดีที่ได้เริ่ม\nการเริ่มจากสิ่งเล็ก ๆ ทำให้ฉันไม่กดดันตัวเองและอยากทำต่อในวันถัดไป",
-        image: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438"
-    },
-    2: {
-        author: "Miss Rachel",
-        handle: "@fit_journey",
-        date: "Jan 02, 26",
-        title: "เริ่มเช้าแบบเบา ๆ แล้วค่อยไปต่อ",
-        content: "การเริ่มต้นไม่จำเป็นต้องหนักเสมอไป\nแค่ลุกขึ้นมาขยับร่างกายวันละนิดก็เพียงพอ\nพอทำต่อเนื่อง ความมั่นใจจะค่อย ๆ เพิ่มขึ้น",
-        image: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee"
-    }
-};
+const LEGACY_DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1517836357463-d25dfeac3438";
 
 const ArticleContent = () => {
     const { id } = useParams();
     const [liveArticle, setLiveArticle] = useState(null);
+    const [postReaction, setPostReaction] = useState(null);
     const [commentInput, setCommentInput] = useState("");
     const [comments, setComments] = useState([]);
+    const [commentReactions, setCommentReactions] = useState({});
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
     useEffect(() => {
@@ -64,6 +50,47 @@ const ArticleContent = () => {
 
         return () => unsubscribe();
     }, [id]);
+
+    useEffect(() => {
+        const currentUser = auth.currentUser;
+
+        if (!db || !id || !currentUser) {
+            setPostReaction(null);
+            return undefined;
+        }
+
+        const reactionRef = doc(db, "articles", id, "reactions", currentUser.uid);
+
+        const unsubscribe = onSnapshot(reactionRef, (reactionSnap) => {
+            setPostReaction(reactionSnap.exists() ? reactionSnap.data()?.type : null);
+        });
+
+        return () => unsubscribe();
+    }, [id]);
+
+    useEffect(() => {
+        const currentUser = auth.currentUser;
+
+        if (!db || !id || !currentUser || comments.length === 0) {
+            setCommentReactions({});
+            return undefined;
+        }
+
+        const unsubscribers = comments.map((comment) => {
+            const reactionRef = doc(db, "articles", id, "comments", comment.id, "reactions", currentUser.uid);
+
+            return onSnapshot(reactionRef, (reactionSnap) => {
+                setCommentReactions((previous) => ({
+                    ...previous,
+                    [comment.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+                }));
+            });
+        });
+
+        return () => {
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [id, comments]);
 
     const handleAddComment = async () => {
         if (!commentInput.trim()) {
@@ -203,7 +230,17 @@ const ArticleContent = () => {
         }
     };
 
-    const article = liveArticle || articleData[id] || articleData[1];
+    const article = liveArticle;
+
+    if (!article) {
+        return (
+            <Box sx={{ backgroundColor: "#efefef", minHeight: "100vh", pt: 12, pb: 7 }}>
+                <Box sx={{ width: "90%", maxWidth: "880px", mx: "auto" }}>
+                    <Typography color="text.secondary">ไม่พบบทความนี้</Typography>
+                </Box>
+            </Box>
+        );
+    }
 
     const articleDate =
         article.createdAt?.toDate
@@ -212,7 +249,9 @@ const ArticleContent = () => {
                 day: "2-digit",
                 year: "2-digit"
             })
-            : article.date;
+            : "-";
+
+    const displayImage = article.image === LEGACY_DEFAULT_IMAGE_URL ? "" : article.image;
 
     return (
         <Box sx={{ backgroundColor: "#efefef", minHeight: "100vh", pt: 12, pb: 7 }}>
@@ -231,22 +270,24 @@ const ArticleContent = () => {
                     {article.content || article.description}
                 </Typography>
 
-                <Box
-                    component="img"
-                    src={article.image}
-                    alt="article"
-                    sx={{
-                        width: "100%",
-                        borderRadius: "12px",
-                        mt: 2,
-                        height: { xs: "320px", md: "560px" },
-                        objectFit: "cover"
-                    }}
-                />
+                {displayImage ? (
+                    <Box
+                        component="img"
+                        src={displayImage}
+                        alt="article"
+                        sx={{
+                            width: "100%",
+                            borderRadius: "12px",
+                            mt: 2,
+                            height: { xs: "320px", md: "560px" },
+                            objectFit: "cover"
+                        }}
+                    />
+                ) : null}
 
                 <Box sx={{ mt: 1, display: "flex", justifyContent: "flex-end", gap: 1 }}>
                     <Button
-                        variant="outlined"
+                        variant={postReaction === "likes" ? "contained" : "outlined"}
                         size="small"
                         onClick={() => handlePostReaction("likes")}
                         sx={{ borderRadius: "999px", textTransform: "none", px: 2 }}
@@ -254,77 +295,25 @@ const ArticleContent = () => {
                         LIKE {article.likes ?? 0}
                     </Button>
                     <Button
-                        variant="outlined"
+                        variant={postReaction === "dislikes" ? "contained" : "outlined"}
                         size="small"
                         onClick={() => handlePostReaction("dislikes")}
+                        color={postReaction === "dislikes" ? "error" : "primary"}
                         sx={{ borderRadius: "999px", textTransform: "none", px: 2 }}
                     >
                         DISLIKE {article.dislikes ?? 0}
                     </Button>
                 </Box>
 
-                <Typography sx={{ mt: 2, mb: 1.5 }} fontWeight={600}>
-                    Comments
-                </Typography>
-
-                <Box sx={{ p: 1.5, backgroundColor: "#f5f5f5", borderRadius: 2 }}>
-                    <TextField
-                        fullWidth
-                        multiline
-                        minRows={2}
-                        variant="standard"
-                        placeholder="Write a comment..."
-                        value={commentInput}
-                        onChange={(event) => setCommentInput(event.target.value)}
-                        InputProps={{ disableUnderline: true }}
-                    />
-                    <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            onClick={handleAddComment}
-                            disabled={isSubmittingComment}
-                            sx={{ borderRadius: "999px", textTransform: "none" }}
-                        >
-                            {isSubmittingComment ? "Posting..." : "Comment"}
-                        </Button>
-                    </Box>
-                </Box>
-
-                {comments.length > 0 ? (
-                    comments.map((comment) => (
-                        <Box key={comment.id} sx={{ mt: 1.5, p: 1.5, backgroundColor: "#f5f5f5", borderRadius: 2 }}>
-                            <Typography variant="body2" fontWeight={600}>
-                                {comment.author || "Unknown"}{" "}
-                                <Typography component="span" variant="caption" color="text.secondary">
-                                    {comment.text}
-                                </Typography>
-                            </Typography>
-                            <Box sx={{ mt: 1, display: "flex", justifyContent: "flex-end", gap: 1.5 }}>
-                                <Button
-                                    variant="text"
-                                    size="small"
-                                    onClick={() => handleCommentReaction(comment.id, "likes")}
-                                    sx={{ minWidth: 0, p: 0, textTransform: "none", textDecoration: "underline" }}
-                                >
-                                    LIKE {comment.likes ?? 0}
-                                </Button>
-                                <Button
-                                    variant="text"
-                                    size="small"
-                                    onClick={() => handleCommentReaction(comment.id, "dislikes")}
-                                    sx={{ minWidth: 0, p: 0, textTransform: "none", textDecoration: "underline" }}
-                                >
-                                    DISLIKE {comment.dislikes ?? 0}
-                                </Button>
-                            </Box>
-                        </Box>
-                    ))
-                ) : (
-                    <Typography sx={{ mt: 1.5 }} variant="body2" color="text.secondary">
-                        ยังไม่มีคอมเมนต์
-                    </Typography>
-                )}
+                <CommentsSection
+                    commentInput={commentInput}
+                    onCommentInputChange={setCommentInput}
+                    onAddComment={handleAddComment}
+                    isSubmittingComment={isSubmittingComment}
+                    comments={comments}
+                    commentReactions={commentReactions}
+                    onCommentReaction={handleCommentReaction}
+                />
             </Box>
         </Box>
     );

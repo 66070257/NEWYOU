@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Box, Typography, Button } from "@mui/material";
 import { Link } from "react-router-dom";
 import AddIcon from "@mui/icons-material/Add";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
 import ArticleCard from "../components/ArticleCard";
-import { db } from "../database/firebase";
+import { auth, db } from "../database/firebase";
 
 const formatDate = (value) => {
     if (!value) return "-";
@@ -24,6 +24,60 @@ const formatDate = (value) => {
 
 const Articles = () => {
     const [articles, setArticles] = useState([]);
+    const [postReactions, setPostReactions] = useState({});
+
+    const handlePostReaction = async (articleId, field) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            return;
+        }
+
+        try {
+            const postRef = doc(db, "articles", articleId);
+            const reactionRef = doc(db, "articles", articleId, "reactions", currentUser.uid);
+
+            await runTransaction(db, async (transaction) => {
+                const reactionSnap = await transaction.get(reactionRef);
+
+                if (!reactionSnap.exists()) {
+                    transaction.update(postRef, {
+                        [field]: increment(1)
+                    });
+
+                    transaction.set(reactionRef, {
+                        uid: currentUser.uid,
+                        type: field,
+                        createdAt: serverTimestamp()
+                    });
+                    return;
+                }
+
+                const previousType = reactionSnap.data()?.type;
+
+                if (previousType === field) {
+                    transaction.update(postRef, {
+                        [field]: increment(-1)
+                    });
+                    transaction.delete(reactionRef);
+                    return;
+                }
+
+                transaction.update(postRef, {
+                    [previousType]: increment(-1),
+                    [field]: increment(1)
+                });
+
+                transaction.update(reactionRef, {
+                    type: field,
+                    updatedAt: serverTimestamp()
+                });
+            });
+        } catch (error) {
+            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+        }
+    };
 
     useEffect(() => {
         if (!db) return undefined;
@@ -41,6 +95,30 @@ const Articles = () => {
 
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        const currentUser = auth.currentUser;
+
+        if (!db || !currentUser || articles.length === 0) {
+            setPostReactions({});
+            return undefined;
+        }
+
+        const unsubscribers = articles.map((article) => {
+            const reactionRef = doc(db, "articles", article.id, "reactions", currentUser.uid);
+
+            return onSnapshot(reactionRef, (reactionSnap) => {
+                setPostReactions((previous) => ({
+                    ...previous,
+                    [article.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+                }));
+            });
+        });
+
+        return () => {
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [articles]);
 
     return (
         <>
@@ -98,30 +176,18 @@ const Articles = () => {
                             description={article.description || article.content}
                             date={formatDate(article.createdAt)}
                             author={article.author || "Unknown"}
-                            image={article.image || "https://images.unsplash.com/photo-1517836357463-d25dfeac3438"}
+                            image={article.image}
+                            likes={article.likes ?? 0}
+                            dislikes={article.dislikes ?? 0}
+                            liked={postReactions[article.id] === "likes"}
+                            disliked={postReactions[article.id] === "dislikes"}
+                            onLike={() => handlePostReaction(article.id, "likes")}
+                            onDislike={() => handlePostReaction(article.id, "dislikes")}
                             linkTo={`/articles/${article.id}`}
                         />
                     ))
                 ) : (
-                    <>
-                        <ArticleCard
-                            title="เรื่องออกกำลังกายวันแรก ไม่ได้ยากอย่างที่คิด"
-                            description="ก่อนหน้านี้ฉันคิดว่าการออกกำลังกายต้องจริงจังและเหนื่อยมาก..."
-                            date="Jan 01, 26"
-                            author="Argoon"
-                            image="https://images.unsplash.com/photo-1517836357463-d25dfeac3438"
-                            linkTo="/articles/1"
-                        />
-
-                        <ArticleCard
-                            title="ตอนเช้าจากเค็มมาก"
-                            description="ฉันเคยหยุดออกกำลังกายเพราะเปรียบเทียบตัวเองกับคนอื่น..."
-                            date="Jan 02, 26"
-                            author="Miss Rachel"
-                            image="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee"
-                            linkTo="/articles/2"
-                        />
-                    </>
+                    <Typography color="text.secondary">ยังไม่มีบทความ</Typography>
                 )}
 
             </Box>

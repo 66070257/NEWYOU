@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
     Typography,
     Container,
@@ -6,10 +6,127 @@ import {
     Grid,
     Paper
 } from "@mui/material";
+import { collection, doc, increment, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
 import HomeArticleCard from "../components/HomeArticleCard";
+import { auth, db } from "../database/firebase";
+
+const formatDate = (value) => {
+    if (!value) return "-";
+
+    if (typeof value === "string") return value;
+
+    if (value?.toDate) {
+        return value.toDate().toLocaleDateString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "2-digit"
+        });
+    }
+
+    return "-";
+};
 
 const Home = () => {
-    const articleList = [1, 2, 3];
+    const [topArticles, setTopArticles] = useState([]);
+    const [postReactions, setPostReactions] = useState({});
+
+    useEffect(() => {
+        if (!db) return undefined;
+
+        const topArticlesQuery = query(
+            collection(db, "articles"),
+            orderBy("likes", "desc"),
+            limit(3)
+        );
+
+        const unsubscribe = onSnapshot(topArticlesQuery, (snapshot) => {
+            const items = snapshot.docs.map((docItem) => ({
+                id: docItem.id,
+                ...docItem.data()
+            }));
+
+            setTopArticles(items);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        const currentUser = auth.currentUser;
+
+        if (!db || !currentUser || topArticles.length === 0) {
+            setPostReactions({});
+            return undefined;
+        }
+
+        const unsubscribers = topArticles.map((article) => {
+            const reactionRef = doc(db, "articles", article.id, "reactions", currentUser.uid);
+
+            return onSnapshot(reactionRef, (reactionSnap) => {
+                setPostReactions((previous) => ({
+                    ...previous,
+                    [article.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+                }));
+            });
+        });
+
+        return () => {
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [topArticles]);
+
+    const handlePostReaction = async (articleId, field) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            return;
+        }
+
+        try {
+            const postRef = doc(db, "articles", articleId);
+            const reactionRef = doc(db, "articles", articleId, "reactions", currentUser.uid);
+
+            await runTransaction(db, async (transaction) => {
+                const reactionSnap = await transaction.get(reactionRef);
+
+                if (!reactionSnap.exists()) {
+                    transaction.update(postRef, {
+                        [field]: increment(1)
+                    });
+
+                    transaction.set(reactionRef, {
+                        uid: currentUser.uid,
+                        type: field,
+                        createdAt: serverTimestamp()
+                    });
+                    return;
+                }
+
+                const previousType = reactionSnap.data()?.type;
+
+                if (previousType === field) {
+                    transaction.update(postRef, {
+                        [field]: increment(-1)
+                    });
+                    transaction.delete(reactionRef);
+                    return;
+                }
+
+                transaction.update(postRef, {
+                    [previousType]: increment(-1),
+                    [field]: increment(1)
+                });
+
+                transaction.update(reactionRef, {
+                    type: field,
+                    updatedAt: serverTimestamp()
+                });
+            });
+        } catch (error) {
+            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+        }
+    };
 
     return (
         <>
@@ -62,16 +179,37 @@ const Home = () => {
                     Articles
                 </Typography>
 
-                <Grid container spacing={3}>
-                    {articleList.map((item) => (
-                        <Grid item xs={12} md={4} key={item}>
+                <Grid container spacing={3} justifyContent="space-between">
+                    {topArticles.length > 0 ? topArticles.map((article) => (
+                        <Grid
+                            item
+                            xs={12}
+                            key={article.id}
+                            sx={{
+                                flexBasis: { md: "30%" },
+                                maxWidth: { md: "30%" }
+                            }}
+                        >
                             <HomeArticleCard
-                                title="บทความสุขภาพตัวอย่าง"
-                                description="เนื้อหาบทความสั้นๆ เกี่ยวกับสุขภาพและการออกกำลังกาย"
-                                image="https://images.unsplash.com/photo-1517836357463-d25dfeac3438"
+                                title={article.title || "Untitled"}
+                                description={article.description || article.content || "-"}
+                                image={article.image}
+                                date={formatDate(article.createdAt)}
+                                author={article.author || "Unknown"}
+                                likes={article.likes ?? 0}
+                                dislikes={article.dislikes ?? 0}
+                                liked={postReactions[article.id] === "likes"}
+                                disliked={postReactions[article.id] === "dislikes"}
+                                onLike={() => handlePostReaction(article.id, "likes")}
+                                onDislike={() => handlePostReaction(article.id, "dislikes")}
+                                linkTo={`/articles/${article.id}`}
                             />
                         </Grid>
-                    ))}
+                    )) : (
+                        <Grid item xs={12}>
+                            <Typography color="text.secondary">ยังไม่มีบทความ</Typography>
+                        </Grid>
+                    )}
                 </Grid>
             </Container>
 

@@ -3,7 +3,7 @@ import { Box, FormControl, MenuItem, Select, Typography } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, increment, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import ArticleCard from "../components/ArticleCard";
 import QnACard from "../components/QnACard";
 import { auth, db } from "../database/firebase";
@@ -29,6 +29,8 @@ const Profile = () => {
     const [currentUser, setCurrentUser] = useState(null);
     const [myArticles, setMyArticles] = useState([]);
     const [myQuestions, setMyQuestions] = useState([]);
+    const [articleReactions, setArticleReactions] = useState({});
+    const [questionReactions, setQuestionReactions] = useState({});
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -76,6 +78,101 @@ const Profile = () => {
         return () => unsubscribe();
     }, [currentUser]);
 
+    useEffect(() => {
+        if (!db || !currentUser || myArticles.length === 0) {
+            setArticleReactions({});
+            return undefined;
+        }
+
+        const unsubscribers = myArticles.map((article) => {
+            const reactionRef = doc(db, "articles", article.id, "reactions", currentUser.uid);
+
+            return onSnapshot(reactionRef, (reactionSnap) => {
+                setArticleReactions((previous) => ({
+                    ...previous,
+                    [article.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+                }));
+            });
+        });
+
+        return () => {
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [currentUser, myArticles]);
+
+    useEffect(() => {
+        if (!db || !currentUser || myQuestions.length === 0) {
+            setQuestionReactions({});
+            return undefined;
+        }
+
+        const unsubscribers = myQuestions.map((question) => {
+            const reactionRef = doc(db, "questions", question.id, "reactions", currentUser.uid);
+
+            return onSnapshot(reactionRef, (reactionSnap) => {
+                setQuestionReactions((previous) => ({
+                    ...previous,
+                    [question.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+                }));
+            });
+        });
+
+        return () => {
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [currentUser, myQuestions]);
+
+    const handlePostReaction = async (collectionName, postId, field) => {
+        if (!currentUser) {
+            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            return;
+        }
+
+        try {
+            const postRef = doc(db, collectionName, postId);
+            const reactionRef = doc(db, collectionName, postId, "reactions", currentUser.uid);
+
+            await runTransaction(db, async (transaction) => {
+                const reactionSnap = await transaction.get(reactionRef);
+
+                if (!reactionSnap.exists()) {
+                    transaction.update(postRef, {
+                        [field]: increment(1)
+                    });
+
+                    transaction.set(reactionRef, {
+                        uid: currentUser.uid,
+                        type: field,
+                        createdAt: serverTimestamp()
+                    });
+                    return;
+                }
+
+                const previousType = reactionSnap.data()?.type;
+
+                if (previousType === field) {
+                    transaction.update(postRef, {
+                        [field]: increment(-1)
+                    });
+                    transaction.delete(reactionRef);
+                    return;
+                }
+
+                transaction.update(postRef, {
+                    [previousType]: increment(-1),
+                    [field]: increment(1)
+                });
+
+                transaction.update(reactionRef, {
+                    type: field,
+                    updatedAt: serverTimestamp()
+                });
+            });
+        } catch (error) {
+            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+        }
+    };
+
     const displayName = currentUser?.displayName || "User";
     const handle = currentUser?.email ? `@${currentUser.email.split("@")[0]}` : "@user";
 
@@ -86,7 +183,7 @@ const Profile = () => {
                 width: "90%",
                 maxWidth: "1100px",
                 margin: "0 auto",
-                paddingTop: "70px"
+                paddingTop: "100px"
             }}
         >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -136,7 +233,13 @@ const Profile = () => {
                                 description={article.description || article.content}
                                 date={formatDate(article.createdAt)}
                                 author={article.author || displayName}
-                                image={article.image || "https://images.unsplash.com/photo-1517836357463-d25dfeac3438"}
+                                image={article.image}
+                                likes={article.likes ?? 0}
+                                dislikes={article.dislikes ?? 0}
+                                liked={articleReactions[article.id] === "likes"}
+                                disliked={articleReactions[article.id] === "dislikes"}
+                                onLike={() => handlePostReaction("articles", article.id, "likes")}
+                                onDislike={() => handlePostReaction("articles", article.id, "dislikes")}
                                 linkTo={`/articles/${article.id}`}
                             />
                         ))
@@ -153,6 +256,12 @@ const Profile = () => {
                                 title={question.title}
                                 date={formatDate(question.createdAt)}
                                 author={question.author || displayName}
+                                likes={question.likes ?? 0}
+                                dislikes={question.dislikes ?? 0}
+                                liked={questionReactions[question.id] === "likes"}
+                                disliked={questionReactions[question.id] === "dislikes"}
+                                onLike={() => handlePostReaction("questions", question.id, "likes")}
+                                onDislike={() => handlePostReaction("questions", question.id, "dislikes")}
                                 linkTo={`/qna/${question.id}`}
                             />
                         ))

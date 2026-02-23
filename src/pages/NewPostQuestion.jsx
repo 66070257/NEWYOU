@@ -1,17 +1,30 @@
 import React, { useState } from "react";
 import { Box, Button, TextField, Typography } from "@mui/material";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useNavigate } from "react-router-dom";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../database/firebase";
+import useImageUpload from "../hooks/useImageUpload";
 
 const NewPostQnA = () => {
     const navigate = useNavigate();
     const [title, setTitle] = useState("");
     const [details, setDetails] = useState("");
-    const [imageUrl, setImageUrl] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const {
+        imageUrl,
+        imageInputValue,
+        previewSrc,
+        hasImage,
+        isUploadingImage,
+        fileInputRef,
+        handlePickImage,
+        handleUploadImage,
+        handleRemoveImage,
+        setImageUrlFromInput
+    } = useImageUpload({ folderName: "questions", mode: "local-server" });
 
     const handleCreate = async () => {
         if (!db) {
@@ -39,7 +52,7 @@ const NewPostQnA = () => {
                 title: title.trim(),
                 details: details.trim(),
                 content: details.trim(),
-                image: imageUrl.trim() || "https://images.unsplash.com/photo-1517836357463-d25dfeac3438",
+                image: imageUrl.trim() || "",
                 uid: currentUser.uid,
                 author: currentUser.displayName || currentUser.email || "Unknown",
                 handle: currentUser.email ? `@${currentUser.email.split("@")[0]}` : "@user",
@@ -104,18 +117,21 @@ const NewPostQnA = () => {
                     <TextField
                         fullWidth
                         variant="standard"
+                        multiline
+                        minRows={1}
                         placeholder="Details..."
                         value={details}
                         onChange={(event) => setDetails(event.target.value)}
                         InputProps={{ disableUnderline: false }}
+                        sx={{ mb: 2 }}
                     />
 
                     <TextField
                         fullWidth
                         variant="standard"
                         placeholder="Image URL (optional)..."
-                        value={imageUrl}
-                        onChange={(event) => setImageUrl(event.target.value)}
+                        value={imageInputValue}
+                        onChange={(event) => setImageUrlFromInput(event.target.value)}
                         InputProps={{ disableUnderline: false }}
                         sx={{ mt: 2 }}
                     />
@@ -129,12 +145,43 @@ const NewPostQnA = () => {
                                 backgroundColor: "#d5d5d5",
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "center"
+                                justifyContent: "center",
+                                overflow: "hidden"
                             }}
                         >
-                            <ImageOutlinedIcon sx={{ fontSize: 54, color: "#111" }} />
+                            {previewSrc ? (
+                                <Box
+                                    component="img"
+                                    src={previewSrc}
+                                    alt="Question"
+                                    sx={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                />
+                            ) : (
+                                <ImageOutlinedIcon sx={{ fontSize: 54, color: "#111" }} />
+                            )}
                         </Box>
-                        <AddCircleOutlineIcon sx={{ fontSize: 44, color: "#222" }} />
+                        <Button
+                            onClick={hasImage ? handleRemoveImage : handlePickImage}
+                            disabled={isSaving}
+                            sx={{
+                                ml: 2,
+                                minWidth: 0,
+                                border: hasImage ? "2px solid #d32f2f" : "2px solid black",
+                                color: hasImage ? "#d32f2f" : "inherit",
+                                borderRadius: "50%",
+                                width: 40,
+                                height: 40
+                            }}
+                        >
+                            {hasImage ? <DeleteOutlineIcon /> : <AddIcon />}
+                        </Button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={handleUploadImage}
+                        />
                     </Box>
                 </Box>
 
@@ -142,7 +189,7 @@ const NewPostQnA = () => {
                     <Button
                         variant="outlined"
                         onClick={handleCreate}
-                        disabled={isSaving}
+                        disabled={isSaving || isUploadingImage}
                         sx={{
                             borderColor: "#111",
                             color: "#111",
@@ -154,7 +201,7 @@ const NewPostQnA = () => {
                             fontWeight: 700
                         }}
                     >
-                        {isSaving ? "Saving..." : "Create"}
+                        {isSaving ? "Saving..." : isUploadingImage ? "Uploading image..." : "Create"}
                     </Button>
                 </Box>
             </Box>

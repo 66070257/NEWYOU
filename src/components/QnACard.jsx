@@ -2,9 +2,34 @@ import React from "react";
 import { Box, Typography, Button } from "@mui/material";
 import { Link } from "react-router-dom";
 
-const QnACard = ({ title, date, author, linkTo }) => {
+const QnACard = ({
+    title,
+    date,
+    author,
+    linkTo,
+    likes = 0,
+    dislikes = 0,
+    onLike,
+    onDislike,
+    liked = false,
+    disliked = false
+}) => {
+    const handleLikeClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onLike?.();
+    };
+
+    const handleDislikeClick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onDislike?.();
+    };
+
     return (
         <Box
+            component={linkTo ? Link : "div"}
+            to={linkTo}
             sx={{
                 backgroundColor: "#f5f5f5",
                 padding: "10px 16px",
@@ -14,12 +39,21 @@ const QnACard = ({ title, date, author, linkTo }) => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: 2
+                gap: 2,
+                textDecoration: "none",
+                color: "inherit",
+                cursor: linkTo ? "pointer" : "default",
+                transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                "&:hover": linkTo
+                    ? {
+                        transform: "translateY(-2px)",
+                        boxShadow: 4
+                    }
+                    : {}
             }}
         >
             <Typography
-                component={linkTo ? Link : "p"}
-                to={linkTo}
+                component="p"
                 variant="body1"
                 sx={{
                     flex: 1,
@@ -41,11 +75,35 @@ const QnACard = ({ title, date, author, linkTo }) => {
                     {date}
                 </Typography>
 
-                <Button size="small" variant="text" sx={{ minWidth: 0, p: "2px 6px", textTransform: "none" }}>
-                    LIKE 13
+                <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleLikeClick}
+                    disabled={!onLike}
+                    sx={{
+                        minWidth: 0,
+                        p: "2px 6px",
+                        textTransform: "none",
+                        color: liked ? "#1976d2" : "inherit",
+                        fontWeight: liked ? 700 : 400
+                    }}
+                >
+                    LIKE {likes}
                 </Button>
-                <Button size="small" variant="text" sx={{ minWidth: 0, p: "2px 6px", textTransform: "none" }}>
-                    DISLIKE 00
+                <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleDislikeClick}
+                    disabled={!onDislike}
+                    sx={{
+                        minWidth: 0,
+                        p: "2px 6px",
+                        textTransform: "none",
+                        color: disliked ? "#d32f2f" : "inherit",
+                        fontWeight: disliked ? 700 : 400
+                    }}
+                >
+                    DISLIKE {dislikes}
                 </Button>
             </Box>
         </Box>

@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Box, Typography, Button } from "@mui/material";
 import { Link } from "react-router-dom";
 import AddIcon from "@mui/icons-material/Add";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
 import QnACard from "../components/QnACard";
-import { db } from "../database/firebase";
+import { auth, db } from "../database/firebase";
 
 const formatDate = (value) => {
     if (!value) return "-";
@@ -24,6 +24,60 @@ const formatDate = (value) => {
 
 const QnA = () => {
     const [questions, setQuestions] = useState([]);
+    const [postReactions, setPostReactions] = useState({});
+
+    const handlePostReaction = async (questionId, field) => {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            return;
+        }
+
+        try {
+            const postRef = doc(db, "questions", questionId);
+            const reactionRef = doc(db, "questions", questionId, "reactions", currentUser.uid);
+
+            await runTransaction(db, async (transaction) => {
+                const reactionSnap = await transaction.get(reactionRef);
+
+                if (!reactionSnap.exists()) {
+                    transaction.update(postRef, {
+                        [field]: increment(1)
+                    });
+
+                    transaction.set(reactionRef, {
+                        uid: currentUser.uid,
+                        type: field,
+                        createdAt: serverTimestamp()
+                    });
+                    return;
+                }
+
+                const previousType = reactionSnap.data()?.type;
+
+                if (previousType === field) {
+                    transaction.update(postRef, {
+                        [field]: increment(-1)
+                    });
+                    transaction.delete(reactionRef);
+                    return;
+                }
+
+                transaction.update(postRef, {
+                    [previousType]: increment(-1),
+                    [field]: increment(1)
+                });
+
+                transaction.update(reactionRef, {
+                    type: field,
+                    updatedAt: serverTimestamp()
+                });
+            });
+        } catch (error) {
+            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+        }
+    };
 
     useEffect(() => {
         if (!db) return undefined;
@@ -41,6 +95,30 @@ const QnA = () => {
 
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        const currentUser = auth.currentUser;
+
+        if (!db || !currentUser || questions.length === 0) {
+            setPostReactions({});
+            return undefined;
+        }
+
+        const unsubscribers = questions.map((question) => {
+            const reactionRef = doc(db, "questions", question.id, "reactions", currentUser.uid);
+
+            return onSnapshot(reactionRef, (reactionSnap) => {
+                setPostReactions((previous) => ({
+                    ...previous,
+                    [question.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+                }));
+            });
+        });
+
+        return () => {
+            unsubscribers.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [questions]);
 
     return (
         <>
@@ -97,25 +175,17 @@ const QnA = () => {
                             title={question.title}
                             date={formatDate(question.createdAt)}
                             author={question.author || "Unknown"}
+                            likes={question.likes ?? 0}
+                            dislikes={question.dislikes ?? 0}
+                            liked={postReactions[question.id] === "likes"}
+                            disliked={postReactions[question.id] === "dislikes"}
+                            onLike={() => handlePostReaction(question.id, "likes")}
+                            onDislike={() => handlePostReaction(question.id, "dislikes")}
                             linkTo={`/qna/${question.id}`}
                         />
                     ))
                 ) : (
-                    <>
-                        <QnACard
-                            title="เรื่องออกกำลังกายวันแรก ไม่ได้ยากอย่างที่คิด"
-                            date="Jan 01, 26"
-                            author="Argoon"
-                            linkTo="/qna/1"
-                        />
-
-                        <QnACard
-                            title="ตอนเช้าจากเค็มมาก"
-                            date="Jan 02, 26"
-                            author="Miss Rachel"
-                            linkTo="/qna/2"
-                        />
-                    </>
+                    <Typography color="text.secondary">ยังไม่มีคำถาม</Typography>
                 )}
 
             </Box>
