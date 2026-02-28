@@ -1,12 +1,64 @@
-import React, { useEffect, useState } from "react";
-import { Box, FormControl, MenuItem, Select, Typography } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import React, { useEffect, useMemo, useState } from "react";
+import { Box, IconButton, Menu, MenuItem, Typography } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import { onAuthStateChanged } from "firebase/auth";
-import { collection, doc, increment, onSnapshot, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { EmailAuthProvider, deleteUser, onAuthStateChanged, reauthenticateWithCredential, updateProfile } from "firebase/auth";
+import { collection, deleteDoc, doc, getDocs, increment, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 import ArticleCard from "../components/ArticleCard";
 import QnACard from "../components/QnACard";
+import SortDropdown from "../components/SortDropdown";
 import { auth, db } from "../database/firebase";
+
+const PROFILE_POST_TYPE_OPTIONS = [
+    { value: "Articles", label: "Articles" },
+    { value: "Q&A", label: "Q&A" }
+];
+
+const COLLECTION_NAMES = {
+    articles: "articles",
+    questions: "questions",
+    users: "users"
+};
+
+const mapSnapshotDocs = (snapshot) => snapshot.docs.map((docItem) => ({
+    id: docItem.id,
+    ...docItem.data()
+}));
+
+const subscribeOwnedItems = ({ uid, collectionName, onItems, onEmpty }) => {
+    if (!uid) {
+        onEmpty();
+        return undefined;
+    }
+
+    const itemsQuery = query(collection(db, collectionName), where("uid", "==", uid));
+
+    return onSnapshot(itemsQuery, (snapshot) => {
+        onItems(mapSnapshotDocs(snapshot));
+    });
+};
+
+const subscribeReactionMap = ({ uid, collectionName, items, setReactions }) => {
+    if (!db || !uid || items.length === 0) {
+        setReactions({});
+        return undefined;
+    }
+
+    const unsubscribers = items.map((item) => {
+        const reactionRef = doc(db, collectionName, item.id, "reactions", uid);
+
+        return onSnapshot(reactionRef, (reactionSnap) => {
+            setReactions((previous) => ({
+                ...previous,
+                [item.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
+            }));
+        });
+    });
+
+    return () => {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+};
 
 const formatDate = (value) => {
     if (!value) return "-";
@@ -24,13 +76,40 @@ const formatDate = (value) => {
     return "-";
 };
 
+const getCreatedAtMillis = (value) => {
+    if (!value) return 0;
+
+    if (typeof value === "string") {
+        const parsedValue = Date.parse(value);
+        return Number.isNaN(parsedValue) ? 0 : parsedValue;
+    }
+
+    if (value?.toDate) {
+        return value.toDate().getTime();
+    }
+
+    return 0;
+};
+
 const Profile = () => {
+    const navigate = useNavigate();
     const [postType, setPostType] = useState("Articles");
     const [currentUser, setCurrentUser] = useState(null);
     const [myArticles, setMyArticles] = useState([]);
     const [myQuestions, setMyQuestions] = useState([]);
     const [articleReactions, setArticleReactions] = useState({});
     const [questionReactions, setQuestionReactions] = useState({});
+    const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+
+    const sortedMyArticles = useMemo(
+        () => [...myArticles].sort((firstItem, secondItem) => getCreatedAtMillis(secondItem.createdAt) - getCreatedAtMillis(firstItem.createdAt)),
+        [myArticles]
+    );
+
+    const sortedMyQuestions = useMemo(
+        () => [...myQuestions].sort((firstItem, secondItem) => getCreatedAtMillis(secondItem.createdAt) - getCreatedAtMillis(firstItem.createdAt)),
+        [myQuestions]
+    );
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -41,90 +120,52 @@ const Profile = () => {
     }, []);
 
     useEffect(() => {
-        if (!currentUser) {
-            setMyArticles([]);
-            return undefined;
-        }
-
-        const articlesQuery = query(collection(db, "articles"), where("uid", "==", currentUser.uid));
-
-        const unsubscribe = onSnapshot(articlesQuery, (snapshot) => {
-            const items = snapshot.docs.map((docItem) => ({
-                id: docItem.id,
-                ...docItem.data()
-            }));
-            setMyArticles(items);
+        const unsubscribe = subscribeOwnedItems({
+            uid: currentUser?.uid,
+            collectionName: COLLECTION_NAMES.articles,
+            onItems: setMyArticles,
+            onEmpty: () => setMyArticles([])
         });
 
-        return () => unsubscribe();
-    }, [currentUser]);
+        return unsubscribe;
+    }, [currentUser?.uid]);
 
     useEffect(() => {
-        if (!currentUser) {
-            setMyQuestions([]);
-            return undefined;
-        }
-
-        const questionsQuery = query(collection(db, "questions"), where("uid", "==", currentUser.uid));
-
-        const unsubscribe = onSnapshot(questionsQuery, (snapshot) => {
-            const items = snapshot.docs.map((docItem) => ({
-                id: docItem.id,
-                ...docItem.data()
-            }));
-            setMyQuestions(items);
+        const unsubscribe = subscribeOwnedItems({
+            uid: currentUser?.uid,
+            collectionName: COLLECTION_NAMES.questions,
+            onItems: setMyQuestions,
+            onEmpty: () => setMyQuestions([])
         });
 
-        return () => unsubscribe();
-    }, [currentUser]);
+        return unsubscribe;
+    }, [currentUser?.uid]);
 
     useEffect(() => {
-        if (!db || !currentUser || myArticles.length === 0) {
-            setArticleReactions({});
-            return undefined;
-        }
-
-        const unsubscribers = myArticles.map((article) => {
-            const reactionRef = doc(db, "articles", article.id, "reactions", currentUser.uid);
-
-            return onSnapshot(reactionRef, (reactionSnap) => {
-                setArticleReactions((previous) => ({
-                    ...previous,
-                    [article.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
-                }));
-            });
+        const unsubscribe = subscribeReactionMap({
+            uid: currentUser?.uid,
+            collectionName: COLLECTION_NAMES.articles,
+            items: myArticles,
+            setReactions: setArticleReactions
         });
 
-        return () => {
-            unsubscribers.forEach((unsubscribe) => unsubscribe());
-        };
-    }, [currentUser, myArticles]);
+        return unsubscribe;
+    }, [currentUser?.uid, myArticles]);
 
     useEffect(() => {
-        if (!db || !currentUser || myQuestions.length === 0) {
-            setQuestionReactions({});
-            return undefined;
-        }
-
-        const unsubscribers = myQuestions.map((question) => {
-            const reactionRef = doc(db, "questions", question.id, "reactions", currentUser.uid);
-
-            return onSnapshot(reactionRef, (reactionSnap) => {
-                setQuestionReactions((previous) => ({
-                    ...previous,
-                    [question.id]: reactionSnap.exists() ? reactionSnap.data()?.type : null
-                }));
-            });
+        const unsubscribe = subscribeReactionMap({
+            uid: currentUser?.uid,
+            collectionName: COLLECTION_NAMES.questions,
+            items: myQuestions,
+            setReactions: setQuestionReactions
         });
 
-        return () => {
-            unsubscribers.forEach((unsubscribe) => unsubscribe());
-        };
-    }, [currentUser, myQuestions]);
+        return unsubscribe;
+    }, [currentUser?.uid, myQuestions]);
 
     const handlePostReaction = async (collectionName, postId, field) => {
         if (!currentUser) {
-            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            alert("Please log in before voting.");
             return;
         }
 
@@ -169,12 +210,142 @@ const Profile = () => {
                 });
             });
         } catch (error) {
-            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+            alert("Failed to update post reaction.");
         }
     };
 
     const displayName = currentUser?.displayName || "User";
     const handle = currentUser?.email ? `@${currentUser.email.split("@")[0]}` : "@user";
+
+    const handleOpenMenu = (event) => {
+        setMenuAnchorEl(event.currentTarget);
+    };
+
+    const handleCloseMenu = () => {
+        setMenuAnchorEl(null);
+    };
+
+    const syncDisplayNameToExistingContent = async (uid, nextDisplayName) => {
+        const articlesQuery = query(collection(db, COLLECTION_NAMES.articles), where("uid", "==", uid));
+        const questionsQuery = query(collection(db, COLLECTION_NAMES.questions), where("uid", "==", uid));
+
+        const [articlesSnap, questionsSnap] = await Promise.all([
+            getDocs(articlesQuery),
+            getDocs(questionsQuery)
+        ]);
+
+        const articleUpdates = articlesSnap.docs.map((docItem) => updateDoc(docItem.ref, {
+            author: nextDisplayName,
+            updatedAt: serverTimestamp()
+        }));
+
+        const questionUpdates = questionsSnap.docs.map((docItem) => updateDoc(docItem.ref, {
+            author: nextDisplayName,
+            updatedAt: serverTimestamp()
+        }));
+
+        await Promise.allSettled([...articleUpdates, ...questionUpdates]);
+    };
+
+    const handleEditProfile = async () => {
+        handleCloseMenu();
+
+        const activeUser = auth.currentUser;
+
+        if (!activeUser) {
+            alert("Please log in first.");
+            return;
+        }
+
+        const currentDisplayName = activeUser.displayName || "";
+        const nextDisplayName = window.prompt("Enter your new display name", currentDisplayName);
+
+        if (nextDisplayName === null) {
+            return;
+        }
+
+        const trimmedDisplayName = nextDisplayName.trim();
+
+        if (!trimmedDisplayName) {
+            alert("Display name cannot be empty.");
+            return;
+        }
+
+        if (trimmedDisplayName === currentDisplayName) {
+            return;
+        }
+
+        try {
+            await updateProfile(activeUser, {
+                displayName: trimmedDisplayName
+            });
+
+            await setDoc(doc(db, "users", activeUser.uid), {
+                uid: activeUser.uid,
+                email: activeUser.email || "",
+                name: trimmedDisplayName,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            setCurrentUser({ ...activeUser });
+        } catch (error) {
+            if (error?.code === "auth/requires-recent-login") {
+                alert("Please log in again, then try updating your profile.");
+                return;
+            }
+
+            alert(`Failed to update profile (${error?.code || "unknown"}).`);
+            return;
+        }
+
+        try {
+            await syncDisplayNameToExistingContent(activeUser.uid, trimmedDisplayName);
+        } catch (error) {
+            alert("Profile updated, but failed to sync old posts/questions.");
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        handleCloseMenu();
+
+        const activeUser = auth.currentUser;
+
+        if (!activeUser) {
+            alert("Please log in first.");
+            return;
+        }
+
+        const shouldDelete = window.confirm("Delete your account permanently? This action cannot be undone.");
+
+        if (!shouldDelete) {
+            return;
+        }
+
+        if (!activeUser.email) {
+            alert("Cannot verify account email for deletion.");
+            return;
+        }
+
+        const password = window.prompt("Enter your password to confirm account deletion");
+
+        if (password === null) {
+            return;
+        }
+
+        if (!password.trim()) {
+            alert("Password is required.");
+            return;
+        }
+
+        try {
+            const credential = EmailAuthProvider.credential(activeUser.email, password.trim());
+            await reauthenticateWithCredential(activeUser, credential);
+            await deleteDoc(doc(db, COLLECTION_NAMES.users, activeUser.uid));
+            await deleteUser(activeUser);
+            navigate("/register", { replace: true });
+        } catch (error) {
+            alert("Failed to delete account. Please verify your password and try again.");
+        }
+    };
 
     return (
         <Box
@@ -190,43 +361,37 @@ const Profile = () => {
                 <Typography sx={{ fontSize: { xs: "48px", md: "64px" }, fontWeight: 700, lineHeight: 1 }}>
                     {displayName}
                 </Typography>
-                <MoreHorizIcon sx={{ fontSize: 30, color: "text.secondary" }} />
+                <IconButton size="small" onClick={handleOpenMenu}>
+                    <MoreHorizIcon sx={{ fontSize: 30, color: "text.secondary" }} />
+                </IconButton>
             </Box>
+
+            <Menu
+                anchorEl={menuAnchorEl}
+                open={Boolean(menuAnchorEl)}
+                onClose={handleCloseMenu}
+            >
+                <MenuItem onClick={handleEditProfile}>Edit</MenuItem>
+                <MenuItem onClick={handleDeleteAccount}>Delete</MenuItem>
+            </Menu>
 
             <Typography sx={{ mt: 2, color: "text.secondary", fontSize: "32px" }}>
                 {handle}
             </Typography>
 
             <Box sx={{ mt: 3, mb: 4, display: "flex", justifyContent: "flex-end" }}>
-                <FormControl size="small">
-                    <Select
-                        value={postType}
-                        onChange={(event) => setPostType(event.target.value)}
-                        IconComponent={ExpandMoreIcon}
-                        sx={{
-                            borderRadius: "999px",
-                            color: "black",
-                            minWidth: "140px",
-                            height: "36px",
-                            "& .MuiSelect-select": {
-                                py: 0.5,
-                                px: 2
-                            },
-                            "& .MuiOutlinedInput-notchedOutline": {
-                                borderColor: "black"
-                            }
-                        }}
-                    >
-                        <MenuItem value="Articles">Articles</MenuItem>
-                        <MenuItem value="Q&A">Q&A</MenuItem>
-                    </Select>
-                </FormControl>
+                <SortDropdown
+                    value={postType}
+                    onChange={setPostType}
+                    options={PROFILE_POST_TYPE_OPTIONS}
+                    minWidth={170}
+                />
             </Box>
 
             {postType === "Articles" ? (
                 <>
-                    {myArticles.length > 0 ? (
-                        myArticles.map((article) => (
+                    {sortedMyArticles.length > 0 ? (
+                        sortedMyArticles.map((article) => (
                             <ArticleCard
                                 key={article.id}
                                 title={article.title}
@@ -238,19 +403,19 @@ const Profile = () => {
                                 dislikes={article.dislikes ?? 0}
                                 liked={articleReactions[article.id] === "likes"}
                                 disliked={articleReactions[article.id] === "dislikes"}
-                                onLike={() => handlePostReaction("articles", article.id, "likes")}
-                                onDislike={() => handlePostReaction("articles", article.id, "dislikes")}
+                                onLike={() => handlePostReaction(COLLECTION_NAMES.articles, article.id, "likes")}
+                                onDislike={() => handlePostReaction(COLLECTION_NAMES.articles, article.id, "dislikes")}
                                 linkTo={`/articles/${article.id}`}
                             />
                         ))
                     ) : (
-                        <Typography color="text.secondary">ยังไม่มีบทความของคุณ</Typography>
+                        <Typography color="text.secondary">You have no articles yet</Typography>
                     )}
                 </>
             ) : (
                 <>
-                    {myQuestions.length > 0 ? (
-                        myQuestions.map((question) => (
+                    {sortedMyQuestions.length > 0 ? (
+                        sortedMyQuestions.map((question) => (
                             <QnACard
                                 key={question.id}
                                 title={question.title}
@@ -260,13 +425,13 @@ const Profile = () => {
                                 dislikes={question.dislikes ?? 0}
                                 liked={questionReactions[question.id] === "likes"}
                                 disliked={questionReactions[question.id] === "dislikes"}
-                                onLike={() => handlePostReaction("questions", question.id, "likes")}
-                                onDislike={() => handlePostReaction("questions", question.id, "dislikes")}
+                                onLike={() => handlePostReaction(COLLECTION_NAMES.questions, question.id, "likes")}
+                                onDislike={() => handlePostReaction(COLLECTION_NAMES.questions, question.id, "dislikes")}
                                 linkTo={`/qna/${question.id}`}
                             />
                         ))
                     ) : (
-                        <Typography color="text.secondary">ยังไม่มีคำถามของคุณ</Typography>
+                        <Typography color="text.secondary">You have no questions yet</Typography>
                     )}
                 </>
             )}

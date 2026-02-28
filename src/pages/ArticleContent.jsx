@@ -1,20 +1,36 @@
 import React, { useEffect, useState } from "react";
-import { Box, Button, Typography } from "@mui/material";
-import { useParams } from "react-router-dom";
-import { addDoc, collection, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
+import { Box, IconButton, Menu, MenuItem, Typography } from "@mui/material";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import { useNavigate, useParams } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
+import { addDoc, collection, deleteDoc, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp, updateDoc } from "firebase/firestore";
 import { auth, db } from "../database/firebase";
 import CommentsSection from "../components/CommentsSection";
+import VoteButton from "../components/VoteButton";
+import { IMAGE_FALLBACK_SRC } from "../constants/imageFallback";
 
 const LEGACY_DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1517836357463-d25dfeac3438";
 
 const ArticleContent = () => {
     const { id } = useParams();
+    const navigate = useNavigate();
     const [liveArticle, setLiveArticle] = useState(null);
+    const [currentUser, setCurrentUser] = useState(null);
     const [postReaction, setPostReaction] = useState(null);
     const [commentInput, setCommentInput] = useState("");
     const [comments, setComments] = useState([]);
     const [commentReactions, setCommentReactions] = useState({});
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+    const [isUpdatingCommentId, setIsUpdatingCommentId] = useState(null);
+    const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setCurrentUser(user);
+        });
+
+        return () => unsubscribe();
+    }, []);
 
     useEffect(() => {
         if (!db || !id) return undefined;
@@ -100,7 +116,7 @@ const ArticleContent = () => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("กรุณาเข้าสู่ระบบก่อนคอมเมนต์");
+            alert("Please log in before commenting.");
             return;
         }
 
@@ -118,7 +134,7 @@ const ArticleContent = () => {
 
             setCommentInput("");
         } catch (error) {
-            alert("เพิ่มคอมเมนต์ไม่สำเร็จ");
+            alert("Failed to add comment.");
         } finally {
             setIsSubmittingComment(false);
         }
@@ -128,7 +144,7 @@ const ArticleContent = () => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            alert("Please log in before voting.");
             return;
         }
 
@@ -173,7 +189,47 @@ const ArticleContent = () => {
                 });
             });
         } catch (error) {
-            alert("อัปเดตคะแนนไม่สำเร็จ");
+            alert("Failed to update reaction.");
+        }
+    };
+
+    const handleUpdateComment = async (commentId, nextText) => {
+        const trimmedText = nextText.trim();
+
+        if (!trimmedText) {
+            alert("Comment cannot be empty.");
+            return false;
+        }
+
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+            alert("Please log in before editing comments.");
+            return false;
+        }
+
+        const targetComment = comments.find((comment) => comment.id === commentId);
+
+        if (!targetComment || targetComment.uid !== currentUser.uid) {
+            alert("You can only edit your own comments.");
+            return false;
+        }
+
+        try {
+            setIsUpdatingCommentId(commentId);
+            const commentRef = doc(db, "articles", id, "comments", commentId);
+
+            await updateDoc(commentRef, {
+                text: trimmedText,
+                updatedAt: serverTimestamp()
+            });
+
+            return true;
+        } catch (error) {
+            alert("Failed to update comment.");
+            return false;
+        } finally {
+            setIsUpdatingCommentId(null);
         }
     };
 
@@ -181,7 +237,7 @@ const ArticleContent = () => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            alert("Please log in before voting.");
             return;
         }
 
@@ -226,7 +282,7 @@ const ArticleContent = () => {
                 });
             });
         } catch (error) {
-            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+            alert("Failed to update post reaction.");
         }
     };
 
@@ -236,7 +292,7 @@ const ArticleContent = () => {
         return (
             <Box sx={{ backgroundColor: "#efefef", minHeight: "100vh", pt: 12, pb: 7 }}>
                 <Box sx={{ width: "90%", maxWidth: "880px", mx: "auto" }}>
-                    <Typography color="text.secondary">ไม่พบบทความนี้</Typography>
+                    <Typography color="text.secondary">Article not found</Typography>
                 </Box>
             </Box>
         );
@@ -252,19 +308,80 @@ const ArticleContent = () => {
             : "-";
 
     const displayImage = article.image === LEGACY_DEFAULT_IMAGE_URL ? "" : article.image;
+    const isOwner = Boolean(currentUser?.uid && article.uid === currentUser.uid);
+
+    const handleOpenMenu = (event) => {
+        setMenuAnchorEl(event.currentTarget);
+    };
+
+    const handleCloseMenu = () => {
+        setMenuAnchorEl(null);
+    };
+
+    const handleEditPost = () => {
+        handleCloseMenu();
+        navigate(`/edit-post/article/${id}`, {
+            state: {
+                mode: "edit",
+                postType: "article",
+                postId: id,
+                initialData: {
+                    title: article.title || "",
+                    content: article.content || article.description || "",
+                    image: article.image || ""
+                }
+            }
+        });
+    };
+
+    const handleDeletePost = async () => {
+        handleCloseMenu();
+
+        if (!window.confirm("Delete this article?")) {
+            return;
+        }
+
+        try {
+            await deleteDoc(doc(db, "articles", id));
+            navigate("/articles");
+        } catch (error) {
+            alert("Failed to delete article.");
+        }
+    };
 
     return (
         <Box sx={{ backgroundColor: "#efefef", minHeight: "100vh", pt: 12, pb: 7 }}>
             <Box sx={{ width: "90%", maxWidth: "880px", mx: "auto" }}>
+                <Typography
+                    variant="overline"
+                    sx={{ color: "text.secondary", letterSpacing: 1.2, fontWeight: 700 }}
+                >
+                    ARTICLE
+                </Typography>
                 <Typography fontWeight={700}>{article.author}</Typography>
                 <Typography variant="caption" color="text.secondary">
                     {article.handle}
                 </Typography>
+                <Menu
+                    anchorEl={menuAnchorEl}
+                    open={Boolean(menuAnchorEl)}
+                    onClose={handleCloseMenu}
+                >
+                    <MenuItem onClick={handleEditPost}>Edit</MenuItem>
+                    <MenuItem onClick={handleDeletePost}>Delete</MenuItem>
+                </Menu>
                 <Typography sx={{ mt: 2, mb: 1 }}>{articleDate}</Typography>
 
-                <Typography sx={{ fontSize: { xs: "34px", md: "48px" }, fontWeight: 500, lineHeight: 1.1 }}>
-                    {article.title}
-                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography sx={{ fontSize: { xs: "34px", md: "48px" }, fontWeight: 500, lineHeight: 1.1 }}>
+                        {article.title}
+                    </Typography>
+                    {isOwner ? (
+                        <IconButton size="small" onClick={handleOpenMenu}>
+                            <MoreHorizIcon fontSize="small" />
+                        </IconButton>
+                    ) : null}
+                </Box>
 
                 <Typography sx={{ mt: 2, whiteSpace: "pre-line", maxWidth: "760px" }}>
                     {article.content || article.description}
@@ -275,6 +392,10 @@ const ArticleContent = () => {
                         component="img"
                         src={displayImage}
                         alt="article"
+                        onError={(event) => {
+                            event.currentTarget.onerror = null;
+                            event.currentTarget.src = IMAGE_FALLBACK_SRC;
+                        }}
                         sx={{
                             width: "100%",
                             borderRadius: "12px",
@@ -286,23 +407,30 @@ const ArticleContent = () => {
                 ) : null}
 
                 <Box sx={{ mt: 1, display: "flex", justifyContent: "flex-end", gap: 1 }}>
-                    <Button
-                        variant={postReaction === "likes" ? "contained" : "outlined"}
-                        size="small"
+                    <VoteButton
+                        type="likes"
+                        active={postReaction === "likes"}
+                        count={article.likes ?? 0}
+                        outlinedWhenInactive
+                        inactiveOutlineColor="#333333"
                         onClick={() => handlePostReaction("likes")}
-                        sx={{ borderRadius: "999px", textTransform: "none", px: 2 }}
-                    >
-                        LIKE {article.likes ?? 0}
-                    </Button>
-                    <Button
-                        variant={postReaction === "dislikes" ? "contained" : "outlined"}
-                        size="small"
+                        sx={{
+                            borderRadius: "999px",
+                            px: 2
+                        }}
+                    />
+                    <VoteButton
+                        type="dislikes"
+                        active={postReaction === "dislikes"}
+                        count={article.dislikes ?? 0}
+                        outlinedWhenInactive
+                        inactiveOutlineColor="#333333"
                         onClick={() => handlePostReaction("dislikes")}
-                        color={postReaction === "dislikes" ? "error" : "primary"}
-                        sx={{ borderRadius: "999px", textTransform: "none", px: 2 }}
-                    >
-                        DISLIKE {article.dislikes ?? 0}
-                    </Button>
+                        sx={{
+                            borderRadius: "999px",
+                            px: 2
+                        }}
+                    />
                 </Box>
 
                 <CommentsSection
@@ -313,6 +441,9 @@ const ArticleContent = () => {
                     comments={comments}
                     commentReactions={commentReactions}
                     onCommentReaction={handleCommentReaction}
+                    currentUserUid={currentUser?.uid || ""}
+                    onUpdateComment={handleUpdateComment}
+                    isUpdatingCommentId={isUpdatingCommentId}
                 />
             </Box>
         </Box>

@@ -13,23 +13,23 @@ const Login = () => {
     const getLoginErrorMessage = (code) => {
         switch (code) {
         case "auth/configuration-not-found":
-            return "ยังไม่ได้เปิด Email/Password ใน Firebase Authentication";
+            return "Email/Password sign-in is not enabled in Firebase Authentication.";
         case "auth/invalid-email":
-            return "รูปแบบอีเมลไม่ถูกต้อง";
+            return "Invalid email format.";
         case "auth/invalid-credential":
-            return "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+            return "Incorrect email or password.";
         case "auth/user-not-found":
-            return "ไม่พบบัญชีผู้ใช้นี้";
+            return "No account found for this email.";
         case "auth/wrong-password":
-            return "รหัสผ่านไม่ถูกต้อง";
+            return "Incorrect password.";
         default:
-            return `เข้าสู่ระบบไม่สำเร็จ (${code || "unknown"})`;
+            return `Login failed (${code || "unknown"})`;
         }
     };
 
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
-            alert("กรุณากรอก Email และ Password");
+            alert("Please enter both Email and Password.");
             return;
         }
 
@@ -62,12 +62,15 @@ const Login = () => {
                     backgroundColor: "#f6f6f6",
                     borderRadius: 2,
                     boxShadow: 2,
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
                     px: 6,
                     pt: 2,
                     pb: 6
                 }}
             >
-                <Box sx={{ mt: 10, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
                     <Typography
                         sx={{
                             fontSize: { xs: "54px", md: "74px" },

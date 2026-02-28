@@ -1,6 +1,8 @@
 import React from "react";
-import { Box, Button, Card, CardContent, CardMedia, Typography } from "@mui/material";
+import { Box, Card, CardContent, CardMedia, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
+import { IMAGE_FALLBACK_SRC } from "../constants/imageFallback";
+import VoteButton from "./VoteButton";
 
 const LEGACY_DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1517836357463-d25dfeac3438";
 
@@ -87,6 +89,10 @@ const HomeArticleCard = ({
                     height="180"
                     image={normalizedImage}
                     alt="article"
+                    onError={(event) => {
+                        event.currentTarget.onerror = null;
+                        event.currentTarget.src = IMAGE_FALLBACK_SRC;
+                    }}
                     sx={{
                         width: "90%",
                         mx: "auto",
@@ -102,34 +108,20 @@ const HomeArticleCard = ({
                 </Typography>
 
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexShrink: 0 }}>
-                    <Button
-                        size="small"
+                    <VoteButton
+                        type="likes"
+                        active={liked}
+                        count={likes}
                         onClick={handleLikeClick}
                         disabled={!onLike}
-                        sx={{
-                            minWidth: 0,
-                            p: 0,
-                            textTransform: "none",
-                            color: liked ? "#1976d2" : "inherit",
-                            fontWeight: liked ? 700 : 400
-                        }}
-                    >
-                        LIKE {likes}
-                    </Button>
-                    <Button
-                        size="small"
+                    />
+                    <VoteButton
+                        type="dislikes"
+                        active={disliked}
+                        count={dislikes}
                         onClick={handleDislikeClick}
                         disabled={!onDislike}
-                        sx={{
-                            minWidth: 0,
-                            p: 0,
-                            textTransform: "none",
-                            color: disliked ? "#d32f2f" : "inherit",
-                            fontWeight: disliked ? 700 : 400
-                        }}
-                    >
-                        DISLIKE {dislikes}
-                    </Button>
+                    />
                 </Box>
             </Box>
         </Card>

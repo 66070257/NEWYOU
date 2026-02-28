@@ -39,9 +39,9 @@ const Navbar = () => {
                     width: "90%",
                     maxWidth: "1200px",
                     padding: "5px 30px",
-                    border: "2px solid black",
+                    border: "1px solid #EAEAEA",
                     borderRadius: "40px",
-                    backgroundColor: "rgba(255,255,255,0.3)",
+                    backgroundColor: "rgba(255,255,255,0.88)",
                     backdropFilter: "blur(6px)"
                 }}
             >
@@ -75,12 +75,12 @@ const Navbar = () => {
 
 const navStyle = {
     padding: "0px 10px",
-    color: "black",
+    color: "#333333",
     fontWeight: "bold",
     textTransform: "none",
     fontSize: "18px",
     "&:hover": {
-        backgroundColor: "rgba(0,0,0,0.1)",
+        backgroundColor: "#EAEAEA",
         borderRadius: "20px"
     }
 };

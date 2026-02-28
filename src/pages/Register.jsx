@@ -15,21 +15,21 @@ const Register = () => {
     const getRegisterErrorMessage = (code) => {
         switch (code) {
         case "auth/configuration-not-found":
-            return "ยังไม่ได้เปิด Email/Password ใน Firebase Authentication";
+            return "Email/Password sign-in is not enabled in Firebase Authentication.";
         case "auth/email-already-in-use":
-            return "อีเมลนี้ถูกใช้งานแล้ว";
+            return "This email is already in use.";
         case "auth/invalid-email":
-            return "รูปแบบอีเมลไม่ถูกต้อง";
+            return "Invalid email format.";
         case "auth/weak-password":
-            return "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+            return "Password must be at least 6 characters.";
         default:
-            return `สมัครสมาชิกไม่สำเร็จ (${code || "unknown"})`;
+            return `Registration failed (${code || "unknown"})`;
         }
     };
 
     const handleRegister = async () => {
         if (!name.trim() || !email.trim() || !password.trim()) {
-            alert("กรุณากรอกข้อมูลให้ครบ");
+            alert("Please fill in all fields.");
             return;
         }
 

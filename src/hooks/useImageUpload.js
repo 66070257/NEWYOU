@@ -52,13 +52,13 @@ const useImageUpload = ({ folderName, mode = "firebase" }) => {
         }
 
         if (!file.type.startsWith("image/")) {
-            alert("กรุณาเลือกไฟล์รูปภาพเท่านั้น");
+            alert("Please select an image file only.");
             event.target.value = "";
             return;
         }
 
         if (mode === "firebase" && !storage) {
-            alert("Firebase Storage ยังไม่ถูกตั้งค่า");
+            alert("Firebase Storage is not configured.");
             event.target.value = "";
             return;
         }
@@ -127,9 +127,9 @@ const useImageUpload = ({ folderName, mode = "firebase" }) => {
             const networkError = error?.message?.toLowerCase().includes("failed to fetch");
 
             if (isLocalServerError && networkError) {
-                alert("อัปโหลดรูปไม่สำเร็จ: ยังไม่ได้เปิด upload server (รัน npm run server)");
+                alert("Image upload failed: upload server is not running (run npm run server).");
             } else {
-                alert(`อัปโหลดรูปไม่สำเร็จ${error?.message ? `: ${error.message}` : ""}`);
+                alert(`Image upload failed${error?.message ? `: ${error.message}` : ""}`);
             }
         } finally {
             if (uploadRequestRef.current === requestId) {

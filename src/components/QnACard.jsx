@@ -1,6 +1,7 @@
 import React from "react";
-import { Box, Typography, Button } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
+import VoteButton from "./VoteButton";
 
 const QnACard = ({
     title,
@@ -75,36 +76,22 @@ const QnACard = ({
                     {date}
                 </Typography>
 
-                <Button
-                    size="small"
-                    variant="text"
+                <VoteButton
+                    type="likes"
+                    active={liked}
+                    count={likes}
                     onClick={handleLikeClick}
                     disabled={!onLike}
-                    sx={{
-                        minWidth: 0,
-                        p: "2px 6px",
-                        textTransform: "none",
-                        color: liked ? "#1976d2" : "inherit",
-                        fontWeight: liked ? 700 : 400
-                    }}
-                >
-                    LIKE {likes}
-                </Button>
-                <Button
-                    size="small"
-                    variant="text"
+                    sx={{ p: "2px 6px" }}
+                />
+                <VoteButton
+                    type="dislikes"
+                    active={disliked}
+                    count={dislikes}
                     onClick={handleDislikeClick}
                     disabled={!onDislike}
-                    sx={{
-                        minWidth: 0,
-                        p: "2px 6px",
-                        textTransform: "none",
-                        color: disliked ? "#d32f2f" : "inherit",
-                        fontWeight: disliked ? 700 : 400
-                    }}
-                >
-                    DISLIKE {dislikes}
-                </Button>
+                    sx={{ p: "2px 6px" }}
+                />
             </Box>
         </Box>
     );

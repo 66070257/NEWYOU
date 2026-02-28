@@ -1,10 +1,54 @@
-import React, { useEffect, useState } from "react";
-import { Box, Typography, Button } from "@mui/material";
+import React, { useEffect, useMemo, useState } from "react";
+import { Box, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import AddIcon from "@mui/icons-material/Add";
 import { collection, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
 import ArticleCard from "../components/ArticleCard";
+import CircleIconButton from "../components/CircleIconButton";
+import SearchBar from "../components/SearchBar";
+import SortDropdown from "../components/SortDropdown";
 import { auth, db } from "../database/firebase";
+
+const SORT_OPTIONS = [
+    { value: "newest", label: "Newest" },
+    { value: "oldest", label: "Oldest" },
+    { value: "popular-alltime", label: "Popular (All time)" },
+    { value: "popular-month", label: "Popular (Month)" },
+    { value: "popular-year", label: "Popular (Year)" },
+    { value: "popular-day", label: "Popular (Day)" }
+];
+
+const getCreatedAtMillis = (value) => {
+    if (!value) return 0;
+
+    if (typeof value === "string") {
+        const parsedValue = Date.parse(value);
+        return Number.isNaN(parsedValue) ? 0 : parsedValue;
+    }
+
+    if (value?.toDate) {
+        return value.toDate().getTime();
+    }
+
+    return 0;
+};
+
+const filterByDateRange = (items, range, nowTime) => {
+    if (range === "alltime") return items;
+
+    const millisecondsByRange = {
+        day: 24 * 60 * 60 * 1000,
+        month: 30 * 24 * 60 * 60 * 1000,
+        year: 365 * 24 * 60 * 60 * 1000
+    };
+
+    const rangeMilliseconds = millisecondsByRange[range];
+    if (!rangeMilliseconds) return items;
+
+    const thresholdTime = nowTime - rangeMilliseconds;
+
+    return items.filter((item) => getCreatedAtMillis(item.createdAt) >= thresholdTime);
+};
 
 const formatDate = (value) => {
     if (!value) return "-";
@@ -25,12 +69,51 @@ const formatDate = (value) => {
 const Articles = () => {
     const [articles, setArticles] = useState([]);
     const [postReactions, setPostReactions] = useState({});
+    const [sortBy, setSortBy] = useState("newest");
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const sortedArticles = useMemo(() => {
+        const items = [...articles];
+
+        switch (sortBy) {
+            case "oldest":
+                return items.sort((firstItem, secondItem) =>
+                    getCreatedAtMillis(firstItem.createdAt) - getCreatedAtMillis(secondItem.createdAt)
+                );
+            case "popular-alltime":
+            case "popular-month":
+            case "popular-year":
+            case "popular-day": {
+                const nowTime = Date.now();
+                const range = sortBy.replace("popular-", "");
+
+                return filterByDateRange(items, range, nowTime)
+                    .sort((firstItem, secondItem) => (secondItem.likes ?? 0) - (firstItem.likes ?? 0));
+            }
+            case "newest":
+            default:
+                return items.sort((firstItem, secondItem) =>
+                    getCreatedAtMillis(secondItem.createdAt) - getCreatedAtMillis(firstItem.createdAt)
+                );
+        }
+    }, [articles, sortBy]);
+
+    const visibleArticles = useMemo(() => {
+        const keyword = searchTerm.trim().toLowerCase();
+
+        if (!keyword) return sortedArticles;
+
+        return sortedArticles.filter((article) =>
+            [article.title, article.description, article.content, article.author]
+                .some((value) => String(value || "").toLowerCase().includes(keyword))
+        );
+    }, [searchTerm, sortedArticles]);
 
     const handlePostReaction = async (articleId, field) => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("กรุณาเข้าสู่ระบบก่อนกดโหวต");
+            alert("Please log in before voting.");
             return;
         }
 
@@ -75,7 +158,7 @@ const Articles = () => {
                 });
             });
         } catch (error) {
-            alert("อัปเดตคะแนนโพสต์ไม่สำเร็จ");
+            alert("Failed to update post reaction.");
         }
     };
 
@@ -138,38 +221,35 @@ const Articles = () => {
                         Articles
                     </Typography>
 
-                    <Button
+                    <CircleIconButton
+                        icon={<AddIcon />}
                         component={Link}
                         to="/new-post"
+                        borderColor="black"
+                        iconColor="black"
                         sx={{
-                            ml: 2,
-                            minWidth: 0,
-                            border: "2px solid black",
-                            borderRadius: "50%",
-                            width: 40,
-                            height: 40
+                            ml: 2
                         }}
-                    >
-                        <AddIcon />
-                    </Button>
+                    />
                 </Box>
 
                 {/* Sort */}
-                <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 3 }}>
-                    <Button
-                        variant="outlined"
-                        sx={{
-                            borderRadius: "20px",
-                            textTransform: "none"
-                        }}
-                    >
-                        Sort By
-                    </Button>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, mb: 3, flexWrap: "wrap" }}>
+                    <SearchBar
+                        value={searchTerm}
+                        onChange={setSearchTerm}
+                        placeholder="Search articles..."
+                    />
+                    <SortDropdown
+                        value={sortBy}
+                        onChange={setSortBy}
+                        options={SORT_OPTIONS}
+                    />
                 </Box>
 
                 {/* Articles List */}
-                {articles.length > 0 ? (
-                    articles.map((article) => (
+                {visibleArticles.length > 0 ? (
+                    visibleArticles.map((article) => (
                         <ArticleCard
                             key={article.id}
                             title={article.title}
@@ -187,7 +267,9 @@ const Articles = () => {
                         />
                     ))
                 ) : (
-                    <Typography color="text.secondary">ยังไม่มีบทความ</Typography>
+                    <Typography color="text.secondary">
+                        {searchTerm.trim() ? "No matching articles" : "No articles yet"}
+                    </Typography>
                 )}
 
             </Box>
