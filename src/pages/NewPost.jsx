@@ -8,6 +8,10 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../database/firebase";
 import useImageUpload from "../hooks/useImageUpload";
 import CircleIconButton from "../components/CircleIconButton";
+import { FIRESTORE_COLLECTIONS } from "../constants/collections";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { APP_ROUTES } from "../constants/routes";
+import { POST_EDITOR_UI_TEXT, SHARED_UI_TEXT } from "../constants/uiText";
 
 const NewPost = () => {
     const navigate = useNavigate();
@@ -16,7 +20,7 @@ const NewPost = () => {
     const [bodyText, setBodyText] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const initialPostType =
-        location.state?.postType === "qna" || location.pathname === "/new-post-qna"
+        location.state?.postType === "qna" || location.pathname === APP_ROUTES.NEW_POST_QNA
             ? "qna"
             : "article";
     const [postType, setPostType] = useState(initialPostType);
@@ -32,7 +36,7 @@ const NewPost = () => {
         handleUploadImage: handleUploadArticleImage,
         handleRemoveImage: handleRemoveArticleImage,
         setImageUrlFromInput: setArticleImageUrlFromInput
-    } = useImageUpload({ folderName: "articles", mode: "local-server" });
+    } = useImageUpload({ folderName: FIRESTORE_COLLECTIONS.ARTICLES, mode: "local-server" });
 
     const {
         imageUrl: questionImageUrl,
@@ -45,7 +49,7 @@ const NewPost = () => {
         handleUploadImage: handleUploadQuestionImage,
         handleRemoveImage: handleRemoveQuestionImage,
         setImageUrlFromInput: setQuestionImageUrlFromInput
-    } = useImageUpload({ folderName: "questions", mode: "local-server" });
+    } = useImageUpload({ folderName: FIRESTORE_COLLECTIONS.QUESTIONS, mode: "local-server" });
 
     const isQnA = postType === "qna";
     const imageUrl = isQnA ? questionImageUrl : articleImageUrl;
@@ -89,12 +93,12 @@ const NewPost = () => {
 
     const handleSubmit = async () => {
         if (!db) {
-            alert("Firebase is not configured. Please set environment variables in .env.");
+            alert(ALERT_MESSAGES.FIREBASE_NOT_CONFIGURED);
             return;
         }
 
         if (!title.trim() || !bodyText.trim()) {
-            alert(`Please enter both Title and ${isQnA ? "Details" : "Content"}.`);
+            alert(isQnA ? ALERT_MESSAGES.POST_FIELDS_REQUIRED_QUESTION : ALERT_MESSAGES.POST_FIELDS_REQUIRED_ARTICLE);
             return;
         }
 
@@ -103,20 +107,20 @@ const NewPost = () => {
             const currentUser = auth.currentUser;
 
             if (!currentUser) {
-                alert("Please log in before creating a post.");
+                alert(ALERT_MESSAGES.AUTH_REQUIRED_FOR_POST_CREATE);
                 setIsSaving(false);
-                navigate("/login");
+                navigate(APP_ROUTES.LOGIN);
                 return;
             }
 
-            await addDoc(collection(db, isQnA ? "questions" : "articles"), isQnA
+            await addDoc(collection(db, isQnA ? FIRESTORE_COLLECTIONS.QUESTIONS : FIRESTORE_COLLECTIONS.ARTICLES), isQnA
                 ? {
                     title: title.trim(),
                     details: bodyText.trim(),
                     content: bodyText.trim(),
                     image: imageUrl.trim() || "",
                     uid: currentUser.uid,
-                    author: currentUser.displayName || currentUser.email || "Unknown",
+                    author: currentUser.displayName || currentUser.email || SHARED_UI_TEXT.UNKNOWN_AUTHOR,
                     handle: currentUser.email ? `@${currentUser.email.split("@")[0]}` : "@user",
                     likes: 0,
                     dislikes: 0,
@@ -128,7 +132,7 @@ const NewPost = () => {
                     content: bodyText.trim(),
                     image: imageUrl.trim() || "",
                     uid: currentUser.uid,
-                    author: currentUser.displayName || currentUser.email || "Unknown",
+                    author: currentUser.displayName || currentUser.email || SHARED_UI_TEXT.UNKNOWN_AUTHOR,
                     handle: currentUser.email ? `@${currentUser.email.split("@")[0]}` : "@user",
                     likes: 0,
                     dislikes: 0,
@@ -136,9 +140,9 @@ const NewPost = () => {
                 }
             );
 
-            navigate(isQnA ? "/qna" : "/articles");
+            navigate(isQnA ? APP_ROUTES.QNA : APP_ROUTES.ARTICLES);
         } catch (error) {
-            alert(`Failed to save ${isQnA ? "question" : "article"}.`);
+            alert(isQnA ? ALERT_MESSAGES.POST_SAVE_FAILED_QUESTION : ALERT_MESSAGES.POST_SAVE_FAILED_ARTICLE);
         } finally {
             setIsSaving(false);
         }
@@ -175,14 +179,14 @@ const NewPost = () => {
                         mb: 8
                     }}
                 >
-                    New Post
+                    {POST_EDITOR_UI_TEXT.NEW_POST_TITLE}
                 </Typography>
 
                 <Box sx={{ width: "100%", maxWidth: "520px", ml: { md: 2 } }}>
                     <TextField
                         fullWidth
                         variant="standard"
-                        placeholder="Title..."
+                        placeholder={POST_EDITOR_UI_TEXT.TITLE_PLACEHOLDER}
                         value={title}
                         onChange={(event) => setTitle(event.target.value)}
                         InputProps={{ disableUnderline: false }}
@@ -194,7 +198,7 @@ const NewPost = () => {
                         variant="standard"
                         multiline
                         minRows={1}
-                        placeholder={isQnA ? "Details..." : "Content..."}
+                        placeholder={isQnA ? POST_EDITOR_UI_TEXT.DETAILS_PLACEHOLDER : POST_EDITOR_UI_TEXT.CONTENT_PLACEHOLDER}
                         value={bodyText}
                         onChange={(event) => setBodyText(event.target.value)}
                         InputProps={{ disableUnderline: false }}
@@ -204,7 +208,7 @@ const NewPost = () => {
                     <TextField
                         fullWidth
                         variant="standard"
-                        placeholder="Image URL (optional)..."
+                        placeholder={POST_EDITOR_UI_TEXT.IMAGE_URL_PLACEHOLDER}
                         value={imageInputValue}
                         onChange={(event) => setImageUrlFromInput(event.target.value)}
                         InputProps={{ disableUnderline: false }}
@@ -218,8 +222,8 @@ const NewPost = () => {
                             onChange={handleTogglePostType}
                             size="small"
                         >
-                            <ToggleButton value="article">Article</ToggleButton>
-                            <ToggleButton value="qna">Q&A</ToggleButton>
+                            <ToggleButton value="article">{POST_EDITOR_UI_TEXT.TYPE_ARTICLE}</ToggleButton>
+                            <ToggleButton value="qna">{POST_EDITOR_UI_TEXT.TYPE_QNA}</ToggleButton>
                         </ToggleButtonGroup>
                     </Box>
 
@@ -240,7 +244,7 @@ const NewPost = () => {
                                 <Box
                                     component="img"
                                     src={previewSrc}
-                                    alt={isQnA ? "Question" : "Article"}
+                                    alt={isQnA ? POST_EDITOR_UI_TEXT.ALT_QUESTION : POST_EDITOR_UI_TEXT.ALT_ARTICLE}
                                     sx={{ width: "100%", height: "100%", objectFit: "cover" }}
                                 />
                             ) : (
@@ -283,7 +287,7 @@ const NewPost = () => {
                             fontWeight: 700
                         }}
                     >
-                        {isSaving ? "Saving..." : isUploadingImage ? "Uploading image..." : "Create"}
+                        {isSaving ? POST_EDITOR_UI_TEXT.SAVE_LOADING : isUploadingImage ? POST_EDITOR_UI_TEXT.IMAGE_UPLOADING : POST_EDITOR_UI_TEXT.CREATE_ACTION}
                     </Button>
                 </Box>
             </Box>

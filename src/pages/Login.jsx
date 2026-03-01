@@ -3,6 +3,9 @@ import { Box, Button, Link, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../database/firebase";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { APP_ROUTES } from "../constants/routes";
+import { AUTH_UI_TEXT } from "../constants/uiText";
 
 const Login = () => {
     const navigate = useNavigate();
@@ -11,32 +14,20 @@ const Login = () => {
     const [isLoading, setIsLoading] = useState(false);
 
     const getLoginErrorMessage = (code) => {
-        switch (code) {
-        case "auth/configuration-not-found":
-            return "Email/Password sign-in is not enabled in Firebase Authentication.";
-        case "auth/invalid-email":
-            return "Invalid email format.";
-        case "auth/invalid-credential":
-            return "Incorrect email or password.";
-        case "auth/user-not-found":
-            return "No account found for this email.";
-        case "auth/wrong-password":
-            return "Incorrect password.";
-        default:
-            return `Login failed (${code || "unknown"})`;
-        }
+        return AUTH_UI_TEXT.LOGIN.ERROR_BY_CODE[code]
+            || `${AUTH_UI_TEXT.LOGIN.ERROR_FALLBACK_PREFIX} (${code || "unknown"})`;
     };
 
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
-            alert("Please enter both Email and Password.");
+            alert(ALERT_MESSAGES.LOGIN_MISSING_FIELDS);
             return;
         }
 
         try {
             setIsLoading(true);
             await signInWithEmailAndPassword(auth, email.trim(), password);
-            navigate("/");
+            navigate(APP_ROUTES.HOME);
         } catch (error) {
             alert(getLoginErrorMessage(error?.code));
         } finally {
@@ -80,7 +71,7 @@ const Login = () => {
                             mb: 10
                         }}
                     >
-                        NEW YOU.
+                        {AUTH_UI_TEXT.BRAND_TITLE}
                     </Typography>
 
                     <Box sx={{ width: "100%", maxWidth: "440px" }}>
@@ -88,7 +79,7 @@ const Login = () => {
                             fullWidth
                             variant="standard"
                             type="email"
-                            placeholder="Email..."
+                            placeholder={AUTH_UI_TEXT.LOGIN.EMAIL_PLACEHOLDER}
                             value={email}
                             onChange={(event) => setEmail(event.target.value)}
                             InputProps={{ disableUnderline: false }}
@@ -99,7 +90,7 @@ const Login = () => {
                             fullWidth
                             type="password"
                             variant="standard"
-                            placeholder="Password..."
+                            placeholder={AUTH_UI_TEXT.LOGIN.PASSWORD_PLACEHOLDER}
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
                             InputProps={{ disableUnderline: false }}
@@ -108,12 +99,12 @@ const Login = () => {
                         <Box sx={{ textAlign: "right", mt: 1 }}>
                             <Link
                                 component={RouterLink}
-                                to="/register"
+                                to={APP_ROUTES.REGISTER}
                                 underline="hover"
                                 color="inherit"
                                 sx={{ fontSize: "11px" }}
                             >
-                                No account? Create one
+                                {AUTH_UI_TEXT.LOGIN.CREATE_ACCOUNT_LINK}
                             </Link>
                         </Box>
 
@@ -133,7 +124,7 @@ const Login = () => {
                                     minWidth: "84px"
                                 }}
                             >
-                                {isLoading ? "Loading..." : "Login"}
+                                {isLoading ? AUTH_UI_TEXT.LOGIN.LOADING : AUTH_UI_TEXT.LOGIN.SUBMIT}
                             </Button>
                         </Box>
                     </Box>

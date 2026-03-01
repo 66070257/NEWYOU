@@ -2,69 +2,21 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import AddIcon from "@mui/icons-material/Add";
-import { collection, doc, increment, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import ArticleCard from "../components/ArticleCard";
 import CircleIconButton from "../components/CircleIconButton";
 import SearchBar from "../components/SearchBar";
 import SortDropdown from "../components/SortDropdown";
 import { auth, db } from "../database/firebase";
-
-const SORT_OPTIONS = [
-    { value: "newest", label: "Newest" },
-    { value: "oldest", label: "Oldest" },
-    { value: "popular-alltime", label: "Popular (All time)" },
-    { value: "popular-month", label: "Popular (Month)" },
-    { value: "popular-year", label: "Popular (Year)" },
-    { value: "popular-day", label: "Popular (Day)" }
-];
-
-const getCreatedAtMillis = (value) => {
-    if (!value) return 0;
-
-    if (typeof value === "string") {
-        const parsedValue = Date.parse(value);
-        return Number.isNaN(parsedValue) ? 0 : parsedValue;
-    }
-
-    if (value?.toDate) {
-        return value.toDate().getTime();
-    }
-
-    return 0;
-};
-
-const filterByDateRange = (items, range, nowTime) => {
-    if (range === "alltime") return items;
-
-    const millisecondsByRange = {
-        day: 24 * 60 * 60 * 1000,
-        month: 30 * 24 * 60 * 60 * 1000,
-        year: 365 * 24 * 60 * 60 * 1000
-    };
-
-    const rangeMilliseconds = millisecondsByRange[range];
-    if (!rangeMilliseconds) return items;
-
-    const thresholdTime = nowTime - rangeMilliseconds;
-
-    return items.filter((item) => getCreatedAtMillis(item.createdAt) >= thresholdTime);
-};
-
-const formatDate = (value) => {
-    if (!value) return "-";
-
-    if (typeof value === "string") return value;
-
-    if (value?.toDate) {
-        return value.toDate().toLocaleDateString("en-US", {
-            month: "short",
-            day: "2-digit",
-            year: "2-digit"
-        });
-    }
-
-    return "-";
-};
+import { FIRESTORE_COLLECTIONS } from "../constants/collections";
+import { LIST_PAGE_CONTAINER_SX, LIST_PAGE_HEADER_SX, LIST_PAGE_SEARCH_SORT_ROW_SX } from "../constants/layout";
+import { APP_ROUTES, articleContentRoute } from "../constants/routes";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { ARTICLES_UI_TEXT, SHARED_UI_TEXT } from "../constants/uiText";
+import { POST_SORT_OPTIONS } from "../constants/sortOptions";
+import { filterByDateRange, formatDate, getCreatedAtMillis } from "../utils/date";
+import { mapSnapshotDocs } from "../utils/firestore";
+import { applyReactionTransaction } from "../utils/reactions";
 
 const Articles = () => {
     const [articles, setArticles] = useState([]);
@@ -113,67 +65,33 @@ const Articles = () => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("Please log in before voting.");
+            alert(ALERT_MESSAGES.AUTH_REQUIRED_FOR_VOTE);
             return;
         }
 
         try {
-            const postRef = doc(db, "articles", articleId);
-            const reactionRef = doc(db, "articles", articleId, "reactions", currentUser.uid);
+            const postRef = doc(db, FIRESTORE_COLLECTIONS.ARTICLES, articleId);
+            const reactionRef = doc(db, FIRESTORE_COLLECTIONS.ARTICLES, articleId, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
-            await runTransaction(db, async (transaction) => {
-                const reactionSnap = await transaction.get(reactionRef);
-
-                if (!reactionSnap.exists()) {
-                    transaction.update(postRef, {
-                        [field]: increment(1)
-                    });
-
-                    transaction.set(reactionRef, {
-                        uid: currentUser.uid,
-                        type: field,
-                        createdAt: serverTimestamp()
-                    });
-                    return;
-                }
-
-                const previousType = reactionSnap.data()?.type;
-
-                if (previousType === field) {
-                    transaction.update(postRef, {
-                        [field]: increment(-1)
-                    });
-                    transaction.delete(reactionRef);
-                    return;
-                }
-
-                transaction.update(postRef, {
-                    [previousType]: increment(-1),
-                    [field]: increment(1)
-                });
-
-                transaction.update(reactionRef, {
-                    type: field,
-                    updatedAt: serverTimestamp()
-                });
+            await applyReactionTransaction({
+                db,
+                itemRef: postRef,
+                reactionRef,
+                field,
+                uid: currentUser.uid
             });
         } catch (error) {
-            alert("Failed to update post reaction.");
+            alert(ALERT_MESSAGES.POST_REACTION_UPDATE_FAILED);
         }
     };
 
     useEffect(() => {
         if (!db) return undefined;
 
-        const articlesQuery = query(collection(db, "articles"), orderBy("createdAt", "desc"));
+        const articlesQuery = query(collection(db, FIRESTORE_COLLECTIONS.ARTICLES), orderBy("createdAt", "desc"));
 
         const unsubscribe = onSnapshot(articlesQuery, (snapshot) => {
-            const items = snapshot.docs.map((docItem) => ({
-                id: docItem.id,
-                ...docItem.data()
-            }));
-
-            setArticles(items);
+            setArticles(mapSnapshotDocs(snapshot));
         });
 
         return () => unsubscribe();
@@ -188,7 +106,7 @@ const Articles = () => {
         }
 
         const unsubscribers = articles.map((article) => {
-            const reactionRef = doc(db, "articles", article.id, "reactions", currentUser.uid);
+            const reactionRef = doc(db, FIRESTORE_COLLECTIONS.ARTICLES, article.id, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
             return onSnapshot(reactionRef, (reactionSnap) => {
                 setPostReactions((previous) => ({
@@ -206,25 +124,17 @@ const Articles = () => {
     return (
         <>
             <Box
-                sx={{
-                    mt: 15,
-                    width: "90%",
-                    maxWidth: "1100px",
-                    margin: "0 auto",
-                    paddingTop: "100px"
-                }}
+                sx={LIST_PAGE_CONTAINER_SX}
             >
-
-                {/* Header */}
-                <Box sx={{ display: "flex", alignItems: "center", mb: 4 }}>
+                <Box sx={LIST_PAGE_HEADER_SX}>
                     <Typography variant="h2" fontWeight="bold">
-                        Articles
+                        {ARTICLES_UI_TEXT.PAGE_TITLE}
                     </Typography>
 
                     <CircleIconButton
                         icon={<AddIcon />}
                         component={Link}
-                        to="/new-post"
+                        to={APP_ROUTES.NEW_POST}
                         borderColor="black"
                         iconColor="black"
                         sx={{
@@ -232,22 +142,18 @@ const Articles = () => {
                         }}
                     />
                 </Box>
-
-                {/* Sort */}
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, mb: 3, flexWrap: "wrap" }}>
+                <Box sx={LIST_PAGE_SEARCH_SORT_ROW_SX}>
                     <SearchBar
                         value={searchTerm}
                         onChange={setSearchTerm}
-                        placeholder="Search articles..."
+                        placeholder={ARTICLES_UI_TEXT.SEARCH_PLACEHOLDER}
                     />
                     <SortDropdown
                         value={sortBy}
                         onChange={setSortBy}
-                        options={SORT_OPTIONS}
+                        options={POST_SORT_OPTIONS}
                     />
                 </Box>
-
-                {/* Articles List */}
                 {visibleArticles.length > 0 ? (
                     visibleArticles.map((article) => (
                         <ArticleCard
@@ -255,7 +161,7 @@ const Articles = () => {
                             title={article.title}
                             description={article.description || article.content}
                             date={formatDate(article.createdAt)}
-                            author={article.author || "Unknown"}
+                            author={article.author || SHARED_UI_TEXT.UNKNOWN_AUTHOR}
                             image={article.image}
                             likes={article.likes ?? 0}
                             dislikes={article.dislikes ?? 0}
@@ -263,15 +169,14 @@ const Articles = () => {
                             disliked={postReactions[article.id] === "dislikes"}
                             onLike={() => handlePostReaction(article.id, "likes")}
                             onDislike={() => handlePostReaction(article.id, "dislikes")}
-                            linkTo={`/articles/${article.id}`}
+                            linkTo={articleContentRoute(article.id)}
                         />
                     ))
                 ) : (
                     <Typography color="text.secondary">
-                        {searchTerm.trim() ? "No matching articles" : "No articles yet"}
+                        {searchTerm.trim() ? ARTICLES_UI_TEXT.EMPTY_MATCHING : ARTICLES_UI_TEXT.EMPTY_ALL}
                     </Typography>
                 )}
-
             </Box>
         </>
     );

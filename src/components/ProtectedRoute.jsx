@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { Box, Typography } from "@mui/material";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../database/firebase";
+import { APP_ROUTES } from "../constants/routes";
 
 const ProtectedRoute = ({ children }) => {
     const [isChecking, setIsChecking] = useState(true);
@@ -26,7 +27,7 @@ const ProtectedRoute = ({ children }) => {
     }
 
     if (!user) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to={APP_ROUTES.LOGIN} replace />;
     }
 
     return children;

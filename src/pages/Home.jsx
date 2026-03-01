@@ -7,26 +7,17 @@ import {
     Paper
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import { collection, doc, increment, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp } from "firebase/firestore";
+import { collection, doc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import HomeArticleCard from "../components/HomeArticleCard";
 import VoteButton from "../components/VoteButton";
 import { auth, db } from "../database/firebase";
-
-const formatDate = (value) => {
-    if (!value) return "-";
-
-    if (typeof value === "string") return value;
-
-    if (value?.toDate) {
-        return value.toDate().toLocaleDateString("en-US", {
-            month: "short",
-            day: "2-digit",
-            year: "2-digit"
-        });
-    }
-
-    return "-";
-};
+import { FIRESTORE_COLLECTIONS } from "../constants/collections";
+import { articleContentRoute, qnaContentRoute } from "../constants/routes";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { HOME_UI_TEXT, SHARED_UI_TEXT } from "../constants/uiText";
+import { formatDate } from "../utils/date";
+import { mapSnapshotDocs } from "../utils/firestore";
+import { applyReactionTransaction } from "../utils/reactions";
 
 const Home = () => {
     const navigate = useNavigate();
@@ -39,18 +30,13 @@ const Home = () => {
         if (!db) return undefined;
 
         const topArticlesQuery = query(
-            collection(db, "articles"),
+            collection(db, FIRESTORE_COLLECTIONS.ARTICLES),
             orderBy("likes", "desc"),
             limit(3)
         );
 
         const unsubscribe = onSnapshot(topArticlesQuery, (snapshot) => {
-            const items = snapshot.docs.map((docItem) => ({
-                id: docItem.id,
-                ...docItem.data()
-            }));
-
-            setTopArticles(items);
+            setTopArticles(mapSnapshotDocs(snapshot));
         });
 
         return () => unsubscribe();
@@ -60,18 +46,13 @@ const Home = () => {
         if (!db) return undefined;
 
         const topQuestionsQuery = query(
-            collection(db, "questions"),
+            collection(db, FIRESTORE_COLLECTIONS.QUESTIONS),
             orderBy("likes", "desc"),
             limit(3)
         );
 
         const unsubscribe = onSnapshot(topQuestionsQuery, (snapshot) => {
-            const items = snapshot.docs.map((docItem) => ({
-                id: docItem.id,
-                ...docItem.data()
-            }));
-
-            setTopQuestions(items);
+            setTopQuestions(mapSnapshotDocs(snapshot));
         });
 
         return () => unsubscribe();
@@ -86,7 +67,7 @@ const Home = () => {
         }
 
         const unsubscribers = topArticles.map((article) => {
-            const reactionRef = doc(db, "articles", article.id, "reactions", currentUser.uid);
+            const reactionRef = doc(db, FIRESTORE_COLLECTIONS.ARTICLES, article.id, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
             return onSnapshot(reactionRef, (reactionSnap) => {
                 setPostReactions((previous) => ({
@@ -110,7 +91,7 @@ const Home = () => {
         }
 
         const unsubscribers = topQuestions.map((question) => {
-            const reactionRef = doc(db, "questions", question.id, "reactions", currentUser.uid);
+            const reactionRef = doc(db, FIRESTORE_COLLECTIONS.QUESTIONS, question.id, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
             return onSnapshot(reactionRef, (reactionSnap) => {
                 setQuestionReactions((previous) => ({
@@ -129,52 +110,23 @@ const Home = () => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("Please log in before voting.");
+            alert(ALERT_MESSAGES.AUTH_REQUIRED_FOR_VOTE);
             return;
         }
 
         try {
-            const postRef = doc(db, "articles", articleId);
-            const reactionRef = doc(db, "articles", articleId, "reactions", currentUser.uid);
+            const postRef = doc(db, FIRESTORE_COLLECTIONS.ARTICLES, articleId);
+            const reactionRef = doc(db, FIRESTORE_COLLECTIONS.ARTICLES, articleId, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
-            await runTransaction(db, async (transaction) => {
-                const reactionSnap = await transaction.get(reactionRef);
-
-                if (!reactionSnap.exists()) {
-                    transaction.update(postRef, {
-                        [field]: increment(1)
-                    });
-
-                    transaction.set(reactionRef, {
-                        uid: currentUser.uid,
-                        type: field,
-                        createdAt: serverTimestamp()
-                    });
-                    return;
-                }
-
-                const previousType = reactionSnap.data()?.type;
-
-                if (previousType === field) {
-                    transaction.update(postRef, {
-                        [field]: increment(-1)
-                    });
-                    transaction.delete(reactionRef);
-                    return;
-                }
-
-                transaction.update(postRef, {
-                    [previousType]: increment(-1),
-                    [field]: increment(1)
-                });
-
-                transaction.update(reactionRef, {
-                    type: field,
-                    updatedAt: serverTimestamp()
-                });
+            await applyReactionTransaction({
+                db,
+                itemRef: postRef,
+                reactionRef,
+                field,
+                uid: currentUser.uid
             });
         } catch (error) {
-            alert("Failed to update post reaction.");
+            alert(ALERT_MESSAGES.POST_REACTION_UPDATE_FAILED);
         }
     };
 
@@ -182,58 +134,28 @@ const Home = () => {
         const currentUser = auth.currentUser;
 
         if (!currentUser) {
-            alert("Please log in before voting.");
+            alert(ALERT_MESSAGES.AUTH_REQUIRED_FOR_VOTE);
             return;
         }
 
         try {
-            const postRef = doc(db, "questions", questionId);
-            const reactionRef = doc(db, "questions", questionId, "reactions", currentUser.uid);
+            const postRef = doc(db, FIRESTORE_COLLECTIONS.QUESTIONS, questionId);
+            const reactionRef = doc(db, FIRESTORE_COLLECTIONS.QUESTIONS, questionId, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
-            await runTransaction(db, async (transaction) => {
-                const reactionSnap = await transaction.get(reactionRef);
-
-                if (!reactionSnap.exists()) {
-                    transaction.update(postRef, {
-                        [field]: increment(1)
-                    });
-
-                    transaction.set(reactionRef, {
-                        uid: currentUser.uid,
-                        type: field,
-                        createdAt: serverTimestamp()
-                    });
-                    return;
-                }
-
-                const previousType = reactionSnap.data()?.type;
-
-                if (previousType === field) {
-                    transaction.update(postRef, {
-                        [field]: increment(-1)
-                    });
-                    transaction.delete(reactionRef);
-                    return;
-                }
-
-                transaction.update(postRef, {
-                    [previousType]: increment(-1),
-                    [field]: increment(1)
-                });
-
-                transaction.update(reactionRef, {
-                    type: field,
-                    updatedAt: serverTimestamp()
-                });
+            await applyReactionTransaction({
+                db,
+                itemRef: postRef,
+                reactionRef,
+                field,
+                uid: currentUser.uid
             });
         } catch (error) {
-            alert("Failed to update post reaction.");
+            alert(ALERT_MESSAGES.POST_REACTION_UPDATE_FAILED);
         }
     };
 
     return (
         <>
-            {/* Hero Section */}
             <Box
                 sx={{
                     height: "400px",
@@ -260,17 +182,16 @@ const Home = () => {
                     }}
                 >
                     <Typography variant="h2" fontWeight="bold">
-                        NEW YOU.
+                        {HOME_UI_TEXT.HERO_TITLE}
                     </Typography>
                     <Typography mt={2}>
-                        A collection of articles, knowledge, and a community
+                        {HOME_UI_TEXT.HERO_SUBTITLE_LINE1}
                         <br />
-                        for health enthusiasts
+                        {HOME_UI_TEXT.HERO_SUBTITLE_LINE2}
                     </Typography>
                 </Box>
             </Box>
 
-            {/* Articles Section */}
             <Container
                 sx={{
                     mt: 6,
@@ -279,7 +200,7 @@ const Home = () => {
                 }}
             >
                 <Typography variant="h4" gutterBottom>
-                    Articles
+                    {HOME_UI_TEXT.ARTICLES_SECTION_TITLE}
                 </Typography>
 
                 <Grid container spacing={3} justifyContent="space-between">
@@ -294,49 +215,48 @@ const Home = () => {
                             }}
                         >
                             <HomeArticleCard
-                                title={article.title || "Untitled"}
+                                title={article.title || SHARED_UI_TEXT.UNTITLED}
                                 description={article.description || article.content || "-"}
                                 image={article.image}
                                 date={formatDate(article.createdAt)}
-                                author={article.author || "Unknown"}
+                                author={article.author || SHARED_UI_TEXT.UNKNOWN_AUTHOR}
                                 likes={article.likes ?? 0}
                                 dislikes={article.dislikes ?? 0}
                                 liked={postReactions[article.id] === "likes"}
                                 disliked={postReactions[article.id] === "dislikes"}
                                 onLike={() => handlePostReaction(article.id, "likes")}
                                 onDislike={() => handlePostReaction(article.id, "dislikes")}
-                                linkTo={`/articles/${article.id}`}
+                                linkTo={articleContentRoute(article.id)}
                             />
                         </Grid>
                     )) : (
                         <Grid item xs={12}>
-                            <Typography color="text.secondary">No articles yet</Typography>
+                            <Typography color="text.secondary">{HOME_UI_TEXT.ARTICLES_EMPTY}</Typography>
                         </Grid>
                     )}
                 </Grid>
             </Container>
 
-            {/* FAQ Section */}
             <Container sx={{ mt: 8, mb: 8 }}>
                 <Typography variant="h4" gutterBottom>
-                    Frequently Asked Questions
+                    {HOME_UI_TEXT.FAQ_SECTION_TITLE}
                 </Typography>
 
                 <Paper sx={{ p: 4, borderRadius: 4 }}>
-                    <Typography variant="h6">Talk space</Typography>
+                    <Typography variant="h6">{HOME_UI_TEXT.TALK_SPACE_TITLE}</Typography>
                     <Typography variant="body2" color="text.secondary" mb={2}>
-                        Join the discussion with us
+                        {HOME_UI_TEXT.TALK_SPACE_SUBTITLE}
                     </Typography>
 
                     <Box sx={{ borderTop: "1px solid #ccc", pt: 2 }}>
                         {topQuestions.length > 0 ? topQuestions.map((question) => (
                             <Box
                                 key={question.id}
-                                onClick={() => navigate(`/qna/${question.id}`)}
+                                onClick={() => navigate(qnaContentRoute(question.id))}
                                 onKeyDown={(event) => {
                                     if (event.key === "Enter" || event.key === " ") {
                                         event.preventDefault();
-                                        navigate(`/qna/${question.id}`);
+                                        navigate(qnaContentRoute(question.id));
                                     }
                                 }}
                                 role="button"
@@ -365,13 +285,13 @@ const Home = () => {
                                 }}
                             >
                                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                                        <Typography
-                                            variant="body2"
-                                            noWrap
-                                            sx={{ color: "inherit", textDecoration: "none" }}
-                                        >
-                                            <strong>{question.author || "Unknown"}</strong>: {question.title || "Untitled"}
-                                        </Typography>
+                                    <Typography
+                                        variant="body2"
+                                        noWrap
+                                        sx={{ color: "inherit", textDecoration: "none" }}
+                                    >
+                                        <strong>{question.author || SHARED_UI_TEXT.UNKNOWN_AUTHOR}</strong>: {question.title || SHARED_UI_TEXT.UNTITLED}
+                                    </Typography>
                                 </Box>
                                 <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
                                     {formatDate(question.createdAt)}
@@ -401,7 +321,7 @@ const Home = () => {
                             </Box>
                         )) : (
                             <Typography variant="body2" color="text.secondary">
-                                No questions yet
+                                {HOME_UI_TEXT.QUESTIONS_EMPTY}
                             </Typography>
                         )}
                     </Box>

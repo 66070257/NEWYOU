@@ -2,9 +2,8 @@ import React from "react";
 import { Box, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import { IMAGE_FALLBACK_SRC } from "../constants/imageFallback";
+import { CARD_UI_TEXT } from "../constants/uiText";
 import VoteButton from "./VoteButton";
-
-const LEGACY_DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1517836357463-d25dfeac3438";
 
 const ArticleCard = ({
     title,
@@ -20,7 +19,7 @@ const ArticleCard = ({
     liked = false,
     disliked = false
 }) => {
-    const normalizedImage = image === LEGACY_DEFAULT_IMAGE_URL ? "" : image;
+    const normalizedImage = image || "";
 
     const handleLikeClick = (event) => {
         event.preventDefault();
@@ -59,7 +58,6 @@ const ArticleCard = ({
             }}
         >
             <Box sx={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                {/* Text */}
                 <Box sx={{ width: normalizedImage ? "65%" : "100%" }}>
                     <Typography
                         component="h6"
@@ -83,13 +81,11 @@ const ArticleCard = ({
                         {description}
                     </Typography>
                 </Box>
-
-                {/* Image */}
                 {normalizedImage ? (
                     <Box
                         component="img"
                         src={normalizedImage}
-                        alt="article"
+                        alt={CARD_UI_TEXT.ARTICLE_IMAGE_ALT}
                         onError={(event) => {
                             event.currentTarget.onerror = null;
                             event.currentTarget.src = IMAGE_FALLBACK_SRC;

@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "@mui/material";
+import { VOTE_UI_TEXT } from "../constants/uiText";
 
 const STYLES = {
     likes: {
@@ -34,7 +35,7 @@ const VoteButton = ({
     sx = {}
 }) => {
     const styleConfig = STYLES[type] ?? STYLES.likes;
-    const label = type === "dislikes" ? "DISLIKE" : "LIKE";
+    const label = type === "dislikes" ? VOTE_UI_TEXT.DISLIKE : VOTE_UI_TEXT.LIKE;
 
     return (
         <Button

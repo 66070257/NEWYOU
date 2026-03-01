@@ -4,6 +4,10 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../database/firebase";
+import { FIRESTORE_COLLECTIONS } from "../constants/collections";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { APP_ROUTES } from "../constants/routes";
+import { AUTH_UI_TEXT } from "../constants/uiText";
 
 const Register = () => {
     const navigate = useNavigate();
@@ -13,23 +17,13 @@ const Register = () => {
     const [isLoading, setIsLoading] = useState(false);
 
     const getRegisterErrorMessage = (code) => {
-        switch (code) {
-        case "auth/configuration-not-found":
-            return "Email/Password sign-in is not enabled in Firebase Authentication.";
-        case "auth/email-already-in-use":
-            return "This email is already in use.";
-        case "auth/invalid-email":
-            return "Invalid email format.";
-        case "auth/weak-password":
-            return "Password must be at least 6 characters.";
-        default:
-            return `Registration failed (${code || "unknown"})`;
-        }
+        return AUTH_UI_TEXT.REGISTER.ERROR_BY_CODE[code]
+            || `${AUTH_UI_TEXT.REGISTER.ERROR_FALLBACK_PREFIX} (${code || "unknown"})`;
     };
 
     const handleRegister = async () => {
         if (!name.trim() || !email.trim() || !password.trim()) {
-            alert("Please fill in all fields.");
+            alert(ALERT_MESSAGES.REGISTER_MISSING_FIELDS);
             return;
         }
 
@@ -40,14 +34,14 @@ const Register = () => {
                 displayName: name.trim()
             });
 
-            await setDoc(doc(db, "users", userCredential.user.uid), {
+            await setDoc(doc(db, FIRESTORE_COLLECTIONS.USERS, userCredential.user.uid), {
                 uid: userCredential.user.uid,
                 name: name.trim(),
                 email: email.trim(),
                 createdAt: serverTimestamp()
             });
 
-            navigate("/");
+            navigate(APP_ROUTES.HOME);
         } catch (error) {
             alert(getRegisterErrorMessage(error?.code));
         } finally {
@@ -88,14 +82,14 @@ const Register = () => {
                                 mb: 8
                             }}
                         >
-                            REGISTER
+                            {AUTH_UI_TEXT.REGISTER.TITLE}
                         </Typography>
 
                         <Box sx={{ width: "100%", maxWidth: "440px" }}>
                             <TextField
                                 fullWidth
                                 variant="standard"
-                                placeholder="Name..."
+                                placeholder={AUTH_UI_TEXT.REGISTER.NAME_PLACEHOLDER}
                                 value={name}
                                 onChange={(event) => setName(event.target.value)}
                                 sx={{ mb: 2 }}
@@ -104,7 +98,7 @@ const Register = () => {
                                 fullWidth
                                 type="email"
                                 variant="standard"
-                                placeholder="Email..."
+                                placeholder={AUTH_UI_TEXT.REGISTER.EMAIL_PLACEHOLDER}
                                 value={email}
                                 onChange={(event) => setEmail(event.target.value)}
                                 sx={{ mb: 2 }}
@@ -113,14 +107,14 @@ const Register = () => {
                                 fullWidth
                                 type="password"
                                 variant="standard"
-                                placeholder="Password..."
+                                placeholder={AUTH_UI_TEXT.REGISTER.PASSWORD_PLACEHOLDER}
                                 value={password}
                                 onChange={(event) => setPassword(event.target.value)}
                             />
 
                             <Box sx={{ textAlign: "right", mt: 1 }}>
-                                <Link component={RouterLink} to="/login" underline="hover" color="inherit" sx={{ fontSize: "11px" }}>
-                                    Have an account? Login
+                                <Link component={RouterLink} to={APP_ROUTES.LOGIN} underline="hover" color="inherit" sx={{ fontSize: "11px" }}>
+                                    {AUTH_UI_TEXT.REGISTER.LOGIN_LINK}
                                 </Link>
                             </Box>
 
@@ -140,7 +134,7 @@ const Register = () => {
                                         minWidth: "84px"
                                     }}
                                 >
-                                    {isLoading ? "Loading..." : "Register"}
+                                    {isLoading ? AUTH_UI_TEXT.REGISTER.LOADING : AUTH_UI_TEXT.REGISTER.SUBMIT}
                                 </Button>
                             </Box>
                         </Box>

@@ -2,11 +2,12 @@ import React from "react";
 import { TextField } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import SearchIcon from "@mui/icons-material/Search";
+import { SEARCH_UI_TEXT } from "../constants/uiText";
 
 const SearchBar = ({
     value,
     onChange,
-    placeholder = "Search...",
+    placeholder = SEARCH_UI_TEXT.DEFAULT_PLACEHOLDER,
     sx = {}
 }) => {
     return (

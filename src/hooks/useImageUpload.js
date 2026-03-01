@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, storage } from "../database/firebase";
+import { ALERT_MESSAGES } from "../constants/messages";
 
 const useImageUpload = ({ folderName, mode = "firebase" }) => {
     const [imageUrl, setImageUrl] = useState("");
@@ -52,13 +53,13 @@ const useImageUpload = ({ folderName, mode = "firebase" }) => {
         }
 
         if (!file.type.startsWith("image/")) {
-            alert("Please select an image file only.");
+            alert(ALERT_MESSAGES.IMAGE_ONLY_ALLOWED);
             event.target.value = "";
             return;
         }
 
         if (mode === "firebase" && !storage) {
-            alert("Firebase Storage is not configured.");
+            alert(ALERT_MESSAGES.FIREBASE_STORAGE_NOT_CONFIGURED);
             event.target.value = "";
             return;
         }
@@ -127,7 +128,7 @@ const useImageUpload = ({ folderName, mode = "firebase" }) => {
             const networkError = error?.message?.toLowerCase().includes("failed to fetch");
 
             if (isLocalServerError && networkError) {
-                alert("Image upload failed: upload server is not running (run npm run server).");
+                alert(ALERT_MESSAGES.IMAGE_UPLOAD_SERVER_DOWN);
             } else {
                 alert(`Image upload failed${error?.message ? `: ${error.message}` : ""}`);
             }

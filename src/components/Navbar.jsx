@@ -4,6 +4,8 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 
 import { Box, Button } from "@mui/material";
 import { auth } from "../database/firebase";
+import { APP_ROUTES } from "../constants/routes";
+import { NAV_UI_TEXT } from "../constants/uiText";
 
 const Navbar = () => {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -45,27 +47,27 @@ const Navbar = () => {
                     backdropFilter: "blur(6px)"
                 }}
             >
-                <Button component={Link} to="/" sx={navStyle}>
-                    Home
+                <Button component={Link} to={APP_ROUTES.HOME} sx={navStyle}>
+                    {NAV_UI_TEXT.HOME}
                 </Button>
 
-                <Button component={Link} to="/articles" sx={navStyle}>
-                    Articles
+                <Button component={Link} to={APP_ROUTES.ARTICLES} sx={navStyle}>
+                    {NAV_UI_TEXT.ARTICLES}
                 </Button>
 
-                <Button component={Link} to="/qna" sx={navStyle}>
-                    Q&A
+                <Button component={Link} to={APP_ROUTES.QNA} sx={navStyle}>
+                    {NAV_UI_TEXT.QNA}
                 </Button>
-                <Button component={Link} to="/profile" sx={navStyle}>
-                    Profile
+                <Button component={Link} to={APP_ROUTES.PROFILE} sx={navStyle}>
+                    {NAV_UI_TEXT.PROFILE}
                 </Button>
                 {isLoggedIn ? (
                     <Button onClick={handleLogout} sx={navStyle}>
-                        Logout
+                        {NAV_UI_TEXT.LOGOUT}
                     </Button>
                 ) : (
-                    <Button component={Link} to="/login" sx={navStyle}>
-                        Login
+                    <Button component={Link} to={APP_ROUTES.LOGIN} sx={navStyle}>
+                        {NAV_UI_TEXT.LOGIN}
                     </Button>
                 )}
             </Box>

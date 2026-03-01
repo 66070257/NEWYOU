@@ -2,28 +2,25 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Box, IconButton, Menu, MenuItem, Typography } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { EmailAuthProvider, deleteUser, onAuthStateChanged, reauthenticateWithCredential, updateProfile } from "firebase/auth";
-import { collection, deleteDoc, doc, getDocs, increment, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import ArticleCard from "../components/ArticleCard";
 import QnACard from "../components/QnACard";
 import SortDropdown from "../components/SortDropdown";
 import { auth, db } from "../database/firebase";
+import { FIRESTORE_COLLECTIONS } from "../constants/collections";
+import { LIST_PAGE_CONTAINER_SX } from "../constants/layout";
+import { APP_ROUTES, articleContentRoute, qnaContentRoute } from "../constants/routes";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { PROFILE_UI_TEXT } from "../constants/uiText";
+import { formatDate, getCreatedAtMillis } from "../utils/date";
+import { mapSnapshotDocs } from "../utils/firestore";
+import { applyReactionTransaction } from "../utils/reactions";
 
 const PROFILE_POST_TYPE_OPTIONS = [
     { value: "Articles", label: "Articles" },
     { value: "Q&A", label: "Q&A" }
 ];
-
-const COLLECTION_NAMES = {
-    articles: "articles",
-    questions: "questions",
-    users: "users"
-};
-
-const mapSnapshotDocs = (snapshot) => snapshot.docs.map((docItem) => ({
-    id: docItem.id,
-    ...docItem.data()
-}));
 
 const subscribeOwnedItems = ({ uid, collectionName, onItems, onEmpty }) => {
     if (!uid) {
@@ -45,7 +42,7 @@ const subscribeReactionMap = ({ uid, collectionName, items, setReactions }) => {
     }
 
     const unsubscribers = items.map((item) => {
-        const reactionRef = doc(db, collectionName, item.id, "reactions", uid);
+        const reactionRef = doc(db, collectionName, item.id, FIRESTORE_COLLECTIONS.REACTIONS, uid);
 
         return onSnapshot(reactionRef, (reactionSnap) => {
             setReactions((previous) => ({
@@ -58,37 +55,6 @@ const subscribeReactionMap = ({ uid, collectionName, items, setReactions }) => {
     return () => {
         unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-};
-
-const formatDate = (value) => {
-    if (!value) return "-";
-
-    if (typeof value === "string") return value;
-
-    if (value?.toDate) {
-        return value.toDate().toLocaleDateString("en-US", {
-            month: "short",
-            day: "2-digit",
-            year: "2-digit"
-        });
-    }
-
-    return "-";
-};
-
-const getCreatedAtMillis = (value) => {
-    if (!value) return 0;
-
-    if (typeof value === "string") {
-        const parsedValue = Date.parse(value);
-        return Number.isNaN(parsedValue) ? 0 : parsedValue;
-    }
-
-    if (value?.toDate) {
-        return value.toDate().getTime();
-    }
-
-    return 0;
 };
 
 const Profile = () => {
@@ -122,7 +88,7 @@ const Profile = () => {
     useEffect(() => {
         const unsubscribe = subscribeOwnedItems({
             uid: currentUser?.uid,
-            collectionName: COLLECTION_NAMES.articles,
+            collectionName: FIRESTORE_COLLECTIONS.ARTICLES,
             onItems: setMyArticles,
             onEmpty: () => setMyArticles([])
         });
@@ -133,7 +99,7 @@ const Profile = () => {
     useEffect(() => {
         const unsubscribe = subscribeOwnedItems({
             uid: currentUser?.uid,
-            collectionName: COLLECTION_NAMES.questions,
+            collectionName: FIRESTORE_COLLECTIONS.QUESTIONS,
             onItems: setMyQuestions,
             onEmpty: () => setMyQuestions([])
         });
@@ -144,7 +110,7 @@ const Profile = () => {
     useEffect(() => {
         const unsubscribe = subscribeReactionMap({
             uid: currentUser?.uid,
-            collectionName: COLLECTION_NAMES.articles,
+            collectionName: FIRESTORE_COLLECTIONS.ARTICLES,
             items: myArticles,
             setReactions: setArticleReactions
         });
@@ -155,7 +121,7 @@ const Profile = () => {
     useEffect(() => {
         const unsubscribe = subscribeReactionMap({
             uid: currentUser?.uid,
-            collectionName: COLLECTION_NAMES.questions,
+            collectionName: FIRESTORE_COLLECTIONS.QUESTIONS,
             items: myQuestions,
             setReactions: setQuestionReactions
         });
@@ -165,57 +131,28 @@ const Profile = () => {
 
     const handlePostReaction = async (collectionName, postId, field) => {
         if (!currentUser) {
-            alert("Please log in before voting.");
+            alert(ALERT_MESSAGES.AUTH_REQUIRED_FOR_VOTE);
             return;
         }
 
         try {
             const postRef = doc(db, collectionName, postId);
-            const reactionRef = doc(db, collectionName, postId, "reactions", currentUser.uid);
+            const reactionRef = doc(db, collectionName, postId, FIRESTORE_COLLECTIONS.REACTIONS, currentUser.uid);
 
-            await runTransaction(db, async (transaction) => {
-                const reactionSnap = await transaction.get(reactionRef);
-
-                if (!reactionSnap.exists()) {
-                    transaction.update(postRef, {
-                        [field]: increment(1)
-                    });
-
-                    transaction.set(reactionRef, {
-                        uid: currentUser.uid,
-                        type: field,
-                        createdAt: serverTimestamp()
-                    });
-                    return;
-                }
-
-                const previousType = reactionSnap.data()?.type;
-
-                if (previousType === field) {
-                    transaction.update(postRef, {
-                        [field]: increment(-1)
-                    });
-                    transaction.delete(reactionRef);
-                    return;
-                }
-
-                transaction.update(postRef, {
-                    [previousType]: increment(-1),
-                    [field]: increment(1)
-                });
-
-                transaction.update(reactionRef, {
-                    type: field,
-                    updatedAt: serverTimestamp()
-                });
+            await applyReactionTransaction({
+                db,
+                itemRef: postRef,
+                reactionRef,
+                field,
+                uid: currentUser.uid
             });
         } catch (error) {
-            alert("Failed to update post reaction.");
+            alert(ALERT_MESSAGES.POST_REACTION_UPDATE_FAILED);
         }
     };
 
-    const displayName = currentUser?.displayName || "User";
-    const handle = currentUser?.email ? `@${currentUser.email.split("@")[0]}` : "@user";
+    const displayName = currentUser?.displayName || PROFILE_UI_TEXT.DEFAULT_DISPLAY_NAME;
+    const handle = currentUser?.email ? `@${currentUser.email.split("@")[0]}` : PROFILE_UI_TEXT.DEFAULT_HANDLE;
 
     const handleOpenMenu = (event) => {
         setMenuAnchorEl(event.currentTarget);
@@ -226,8 +163,8 @@ const Profile = () => {
     };
 
     const syncDisplayNameToExistingContent = async (uid, nextDisplayName) => {
-        const articlesQuery = query(collection(db, COLLECTION_NAMES.articles), where("uid", "==", uid));
-        const questionsQuery = query(collection(db, COLLECTION_NAMES.questions), where("uid", "==", uid));
+        const articlesQuery = query(collection(db, FIRESTORE_COLLECTIONS.ARTICLES), where("uid", "==", uid));
+        const questionsQuery = query(collection(db, FIRESTORE_COLLECTIONS.QUESTIONS), where("uid", "==", uid));
 
         const [articlesSnap, questionsSnap] = await Promise.all([
             getDocs(articlesQuery),
@@ -244,7 +181,12 @@ const Profile = () => {
             updatedAt: serverTimestamp()
         }));
 
-        await Promise.allSettled([...articleUpdates, ...questionUpdates]);
+        const syncResults = await Promise.allSettled([...articleUpdates, ...questionUpdates]);
+        const hasFailedSync = syncResults.some((result) => result.status === "rejected");
+
+        if (hasFailedSync) {
+            throw new Error("Failed to sync some existing content author names.");
+        }
     };
 
     const handleEditProfile = async () => {
@@ -253,12 +195,12 @@ const Profile = () => {
         const activeUser = auth.currentUser;
 
         if (!activeUser) {
-            alert("Please log in first.");
+            alert(ALERT_MESSAGES.AUTH_REQUIRED_GENERAL);
             return;
         }
 
         const currentDisplayName = activeUser.displayName || "";
-        const nextDisplayName = window.prompt("Enter your new display name", currentDisplayName);
+        const nextDisplayName = window.prompt(PROFILE_UI_TEXT.PROMPT_EDIT_DISPLAY_NAME, currentDisplayName);
 
         if (nextDisplayName === null) {
             return;
@@ -267,7 +209,7 @@ const Profile = () => {
         const trimmedDisplayName = nextDisplayName.trim();
 
         if (!trimmedDisplayName) {
-            alert("Display name cannot be empty.");
+            alert(ALERT_MESSAGES.PROFILE_DISPLAY_NAME_EMPTY);
             return;
         }
 
@@ -280,7 +222,7 @@ const Profile = () => {
                 displayName: trimmedDisplayName
             });
 
-            await setDoc(doc(db, "users", activeUser.uid), {
+            await setDoc(doc(db, FIRESTORE_COLLECTIONS.USERS, activeUser.uid), {
                 uid: activeUser.uid,
                 email: activeUser.email || "",
                 name: trimmedDisplayName,
@@ -289,7 +231,7 @@ const Profile = () => {
             setCurrentUser({ ...activeUser });
         } catch (error) {
             if (error?.code === "auth/requires-recent-login") {
-                alert("Please log in again, then try updating your profile.");
+                alert(ALERT_MESSAGES.AUTH_RELOGIN_REQUIRED);
                 return;
             }
 
@@ -300,7 +242,7 @@ const Profile = () => {
         try {
             await syncDisplayNameToExistingContent(activeUser.uid, trimmedDisplayName);
         } catch (error) {
-            alert("Profile updated, but failed to sync old posts/questions.");
+            alert(ALERT_MESSAGES.PROFILE_SYNC_FAILED);
         }
     };
 
@@ -310,52 +252,46 @@ const Profile = () => {
         const activeUser = auth.currentUser;
 
         if (!activeUser) {
-            alert("Please log in first.");
+            alert(ALERT_MESSAGES.AUTH_REQUIRED_GENERAL);
             return;
         }
 
-        const shouldDelete = window.confirm("Delete your account permanently? This action cannot be undone.");
+        const shouldDelete = window.confirm(PROFILE_UI_TEXT.DELETE_CONFIRM);
 
         if (!shouldDelete) {
             return;
         }
 
         if (!activeUser.email) {
-            alert("Cannot verify account email for deletion.");
+            alert(ALERT_MESSAGES.ACCOUNT_DELETE_EMAIL_UNAVAILABLE);
             return;
         }
 
-        const password = window.prompt("Enter your password to confirm account deletion");
+        const password = window.prompt(PROFILE_UI_TEXT.DELETE_PASSWORD_PROMPT);
 
         if (password === null) {
             return;
         }
 
         if (!password.trim()) {
-            alert("Password is required.");
+            alert(ALERT_MESSAGES.ACCOUNT_DELETE_PASSWORD_REQUIRED);
             return;
         }
 
         try {
             const credential = EmailAuthProvider.credential(activeUser.email, password.trim());
             await reauthenticateWithCredential(activeUser, credential);
-            await deleteDoc(doc(db, COLLECTION_NAMES.users, activeUser.uid));
+            await deleteDoc(doc(db, FIRESTORE_COLLECTIONS.USERS, activeUser.uid));
             await deleteUser(activeUser);
-            navigate("/register", { replace: true });
+            navigate(APP_ROUTES.REGISTER, { replace: true });
         } catch (error) {
-            alert("Failed to delete account. Please verify your password and try again.");
+            alert(ALERT_MESSAGES.ACCOUNT_DELETE_FAILED);
         }
     };
 
     return (
         <Box
-            sx={{
-                mt: 15,
-                width: "90%",
-                maxWidth: "1100px",
-                margin: "0 auto",
-                paddingTop: "100px"
-            }}
+            sx={LIST_PAGE_CONTAINER_SX}
         >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <Typography sx={{ fontSize: { xs: "48px", md: "64px" }, fontWeight: 700, lineHeight: 1 }}>
@@ -371,8 +307,8 @@ const Profile = () => {
                 open={Boolean(menuAnchorEl)}
                 onClose={handleCloseMenu}
             >
-                <MenuItem onClick={handleEditProfile}>Edit</MenuItem>
-                <MenuItem onClick={handleDeleteAccount}>Delete</MenuItem>
+                <MenuItem onClick={handleEditProfile}>{PROFILE_UI_TEXT.MENU_EDIT}</MenuItem>
+                <MenuItem onClick={handleDeleteAccount}>{PROFILE_UI_TEXT.MENU_DELETE}</MenuItem>
             </Menu>
 
             <Typography sx={{ mt: 2, color: "text.secondary", fontSize: "32px" }}>
@@ -403,13 +339,13 @@ const Profile = () => {
                                 dislikes={article.dislikes ?? 0}
                                 liked={articleReactions[article.id] === "likes"}
                                 disliked={articleReactions[article.id] === "dislikes"}
-                                onLike={() => handlePostReaction(COLLECTION_NAMES.articles, article.id, "likes")}
-                                onDislike={() => handlePostReaction(COLLECTION_NAMES.articles, article.id, "dislikes")}
-                                linkTo={`/articles/${article.id}`}
+                                onLike={() => handlePostReaction(FIRESTORE_COLLECTIONS.ARTICLES, article.id, "likes")}
+                                onDislike={() => handlePostReaction(FIRESTORE_COLLECTIONS.ARTICLES, article.id, "dislikes")}
+                                linkTo={articleContentRoute(article.id)}
                             />
                         ))
                     ) : (
-                        <Typography color="text.secondary">You have no articles yet</Typography>
+                        <Typography color="text.secondary">{PROFILE_UI_TEXT.OWN_ARTICLES_EMPTY}</Typography>
                     )}
                 </>
             ) : (
@@ -425,13 +361,13 @@ const Profile = () => {
                                 dislikes={question.dislikes ?? 0}
                                 liked={questionReactions[question.id] === "likes"}
                                 disliked={questionReactions[question.id] === "dislikes"}
-                                onLike={() => handlePostReaction(COLLECTION_NAMES.questions, question.id, "likes")}
-                                onDislike={() => handlePostReaction(COLLECTION_NAMES.questions, question.id, "dislikes")}
-                                linkTo={`/qna/${question.id}`}
+                                onLike={() => handlePostReaction(FIRESTORE_COLLECTIONS.QUESTIONS, question.id, "likes")}
+                                onDislike={() => handlePostReaction(FIRESTORE_COLLECTIONS.QUESTIONS, question.id, "dislikes")}
+                                linkTo={qnaContentRoute(question.id)}
                             />
                         ))
                     ) : (
-                        <Typography color="text.secondary">You have no questions yet</Typography>
+                        <Typography color="text.secondary">{PROFILE_UI_TEXT.OWN_QUESTIONS_EMPTY}</Typography>
                     )}
                 </>
             )}

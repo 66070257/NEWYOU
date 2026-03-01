@@ -4,6 +4,8 @@ import FacebookOutlinedIcon from "@mui/icons-material/FacebookOutlined";
 import YouTubeIcon from "@mui/icons-material/YouTube";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import { Link } from "react-router-dom";
+import { APP_ROUTES } from "../constants/routes";
+import { FOOTER_UI_TEXT, NAV_UI_TEXT } from "../constants/uiText";
 
 const Footer = () => {
     return (
@@ -28,17 +30,17 @@ const Footer = () => {
                 </Box>
 
                 <Box sx={{ display: "flex", justifyContent: "center", gap: 5, flexWrap: "wrap" }}>
-                    <Typography component={Link} to="/" sx={footerLinkStyle}>Home</Typography>
-                    <Typography component={Link} to="/articles" sx={footerLinkStyle}>Articles</Typography>
-                    <Typography component={Link} to="/qna" sx={footerLinkStyle}>Q&A</Typography>
-                    <Typography component={Link} to="/profile" sx={footerLinkStyle}>Profile</Typography>
-                    <Typography component={Link} to="/login" sx={footerLinkStyle}>Login</Typography>
+                    <Typography component={Link} to={APP_ROUTES.HOME} sx={footerLinkStyle}>{NAV_UI_TEXT.HOME}</Typography>
+                    <Typography component={Link} to={APP_ROUTES.ARTICLES} sx={footerLinkStyle}>{NAV_UI_TEXT.ARTICLES}</Typography>
+                    <Typography component={Link} to={APP_ROUTES.QNA} sx={footerLinkStyle}>{NAV_UI_TEXT.QNA}</Typography>
+                    <Typography component={Link} to={APP_ROUTES.PROFILE} sx={footerLinkStyle}>{NAV_UI_TEXT.PROFILE}</Typography>
+                    <Typography component={Link} to={APP_ROUTES.LOGIN} sx={footerLinkStyle}>{NAV_UI_TEXT.LOGIN}</Typography>
                 </Box>
             </Box>
 
             <Box sx={{ backgroundColor: "#333333", py: 1.2, textAlign: "center" }}>
                 <Typography variant="body2" sx={{ color: "#EAEAEA" }}>
-                    Copyright © 2026 NEW YOU. All rights reserved.
+                    {FOOTER_UI_TEXT.COPYRIGHT}
                 </Typography>
             </Box>
         </Box>

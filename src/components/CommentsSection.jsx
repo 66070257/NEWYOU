@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Box, Button, TextField, Typography } from "@mui/material";
 import VoteButton from "./VoteButton";
+import { COMMENTS_UI_TEXT } from "../constants/uiText";
 
 const COMMENT_BOX_STYLE = { mt: 1.5, p: 1.5, backgroundColor: "#f5f5f5", borderRadius: 2 };
 const COMMENT_ACTION_BUTTON_STYLE = { textTransform: "none", minWidth: 0, px: 0.5, color: "#777777" };
@@ -27,7 +28,7 @@ const renderCommentActionButtons = ({
                     disabled={isUpdatingThisComment}
                     sx={COMMENT_ACTION_BUTTON_STYLE}
                 >
-                    Cancel
+                    {COMMENTS_UI_TEXT.CANCEL_BUTTON}
                 </Button>
                 <Button
                     variant="text"
@@ -36,7 +37,7 @@ const renderCommentActionButtons = ({
                     disabled={isUpdatingThisComment}
                     sx={{ ...COMMENT_ACTION_BUTTON_STYLE, fontWeight: 700 }}
                 >
-                    {isUpdatingThisComment ? "Saving..." : "Save"}
+                    {isUpdatingThisComment ? COMMENTS_UI_TEXT.SAVE_LOADING_BUTTON : COMMENTS_UI_TEXT.SAVE_BUTTON}
                 </Button>
             </>
         );
@@ -49,13 +50,13 @@ const renderCommentActionButtons = ({
             onClick={onStartEdit}
             sx={COMMENT_ACTION_BUTTON_STYLE}
         >
-            Edit
+            {COMMENTS_UI_TEXT.EDIT_BUTTON}
         </Button>
     );
 };
 
 const CommentsSection = ({
-    title = "Comments",
+    title = COMMENTS_UI_TEXT.TITLE,
     commentInput,
     onCommentInputChange,
     onAddComment,
@@ -66,7 +67,7 @@ const CommentsSection = ({
     currentUserUid,
     onUpdateComment,
     isUpdatingCommentId,
-    emptyText = "No comments yet"
+    emptyText = COMMENTS_UI_TEXT.EMPTY
 }) => {
     const [editingCommentId, setEditingCommentId] = useState(null);
     const [editingText, setEditingText] = useState("");
@@ -106,7 +107,7 @@ const CommentsSection = ({
                     multiline
                     minRows={2}
                     variant="standard"
-                    placeholder="Write a comment..."
+                    placeholder={COMMENTS_UI_TEXT.PLACEHOLDER}
                     value={commentInput}
                     onChange={(event) => onCommentInputChange(event.target.value)}
                     InputProps={{ disableUnderline: true }}
@@ -129,7 +130,7 @@ const CommentsSection = ({
                             }
                         }}
                     >
-                        {isSubmittingComment ? "Posting..." : "Comment"}
+                        {isSubmittingComment ? COMMENTS_UI_TEXT.COMMENT_POSTING_BUTTON : COMMENTS_UI_TEXT.COMMENT_BUTTON}
                     </Button>
                 </Box>
             </Box>
@@ -143,7 +144,7 @@ const CommentsSection = ({
                     return (
                         <Box key={comment.id} sx={COMMENT_BOX_STYLE}>
                             <Typography variant="body2" fontWeight={600}>
-                                {comment.author || "Unknown"}:
+                                {comment.author || COMMENTS_UI_TEXT.UNKNOWN_AUTHOR}:
                             </Typography>
 
                             {isEditing ? (

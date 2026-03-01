@@ -8,6 +8,10 @@ import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "fire
 import { auth, db } from "../database/firebase";
 import useImageUpload from "../hooks/useImageUpload";
 import CircleIconButton from "../components/CircleIconButton";
+import { FIRESTORE_COLLECTIONS, getCollectionByPostType } from "../constants/collections";
+import { ALERT_MESSAGES } from "../constants/messages";
+import { APP_ROUTES, articleContentRoute, qnaContentRoute } from "../constants/routes";
+import { POST_EDITOR_UI_TEXT, SHARED_UI_TEXT } from "../constants/uiText";
 
 const EditPost = () => {
     const navigate = useNavigate();
@@ -34,7 +38,7 @@ const EditPost = () => {
         handleUploadImage: handleUploadArticleImage,
         handleRemoveImage: handleRemoveArticleImage,
         setImageUrlFromInput: setArticleImageUrlFromInput
-    } = useImageUpload({ folderName: "articles", mode: "local-server" });
+    } = useImageUpload({ folderName: FIRESTORE_COLLECTIONS.ARTICLES, mode: "local-server" });
 
     const {
         imageUrl: questionImageUrl,
@@ -47,7 +51,7 @@ const EditPost = () => {
         handleUploadImage: handleUploadQuestionImage,
         handleRemoveImage: handleRemoveQuestionImage,
         setImageUrlFromInput: setQuestionImageUrlFromInput
-    } = useImageUpload({ folderName: "questions", mode: "local-server" });
+    } = useImageUpload({ folderName: FIRESTORE_COLLECTIONS.QUESTIONS, mode: "local-server" });
 
     const isQnA = postType === "qna";
     const imageUrl = isQnA ? questionImageUrl : articleImageUrl;
@@ -63,7 +67,7 @@ const EditPost = () => {
 
     useEffect(() => {
         if (!hasPostId) {
-            navigate("/new-post", { replace: true });
+            navigate(APP_ROUTES.NEW_POST, { replace: true });
             return;
         }
 
@@ -92,13 +96,13 @@ const EditPost = () => {
             }
 
             try {
-                const collectionName = currentType === "qna" ? "questions" : "articles";
+                const collectionName = getCollectionByPostType(currentType);
                 const postRef = doc(db, collectionName, postId);
                 const postSnap = await getDoc(postRef);
 
                 if (!postSnap.exists()) {
-                    alert("Post not found.");
-                    navigate(currentType === "qna" ? "/qna" : "/articles", { replace: true });
+                    alert(ALERT_MESSAGES.POST_NOT_FOUND);
+                    navigate(currentType === "qna" ? APP_ROUTES.QNA : APP_ROUTES.ARTICLES, { replace: true });
                     return;
                 }
 
@@ -115,7 +119,7 @@ const EditPost = () => {
                     setArticleImageUrlFromInput(postData.image || "");
                 }
             } catch (error) {
-                alert("Failed to load post for editing.");
+                alert(ALERT_MESSAGES.POST_LOAD_FAILED_FOR_EDIT);
             }
         };
 
@@ -152,12 +156,12 @@ const EditPost = () => {
 
     const handleSubmit = async () => {
         if (!db) {
-            alert("Firebase is not configured. Please set environment variables in .env.");
+            alert(ALERT_MESSAGES.FIREBASE_NOT_CONFIGURED);
             return;
         }
 
         if (!title.trim() || !bodyText.trim()) {
-            alert(`Please enter both Title and ${isQnA ? "Details" : "Content"}.`);
+            alert(isQnA ? ALERT_MESSAGES.POST_FIELDS_REQUIRED_QUESTION : ALERT_MESSAGES.POST_FIELDS_REQUIRED_ARTICLE);
             return;
         }
 
@@ -166,16 +170,15 @@ const EditPost = () => {
             const currentUser = auth.currentUser;
 
             if (!currentUser) {
-                alert("Please log in before editing a post.");
+                alert(ALERT_MESSAGES.AUTH_REQUIRED_FOR_POST_EDIT);
                 setIsSaving(false);
-                navigate("/login");
+                navigate(APP_ROUTES.LOGIN);
                 return;
             }
 
             const originalPostType = editState?.postType === "qna" ? "qna" : normalizedRouteType;
             const selectedPostType = isQnA ? "qna" : "article";
 
-            const getCollectionName = (postTypeValue) => (postTypeValue === "qna" ? "questions" : "articles");
             const getPayloadByType = (postTypeValue) => (
                 postTypeValue === "qna"
                     ? {
@@ -195,13 +198,13 @@ const EditPost = () => {
             );
 
             if (selectedPostType === originalPostType) {
-                const postRef = doc(db, getCollectionName(selectedPostType), postId);
+                const postRef = doc(db, getCollectionByPostType(selectedPostType), postId);
                 await updateDoc(postRef, getPayloadByType(selectedPostType));
-                navigate(selectedPostType === "qna" ? `/qna/${postId}` : `/articles/${postId}`);
+                navigate(selectedPostType === "qna" ? qnaContentRoute(postId) : articleContentRoute(postId));
                 return;
             }
 
-            const originalRef = doc(db, getCollectionName(originalPostType), postId);
+            const originalRef = doc(db, getCollectionByPostType(originalPostType), postId);
             const originalSnap = await getDoc(originalRef);
 
             if (!originalSnap.exists()) {
@@ -209,12 +212,12 @@ const EditPost = () => {
             }
 
             const originalData = originalSnap.data();
-            const targetRef = doc(db, getCollectionName(selectedPostType), postId);
+            const targetRef = doc(db, getCollectionByPostType(selectedPostType), postId);
 
             const migratedPayload = selectedPostType === "qna"
                 ? {
                     uid: originalData.uid ?? currentUser.uid,
-                    author: originalData.author ?? currentUser.displayName ?? currentUser.email ?? "Unknown",
+                    author: originalData.author ?? currentUser.displayName ?? currentUser.email ?? SHARED_UI_TEXT.UNKNOWN_AUTHOR,
                     handle: originalData.handle ?? (currentUser.email ? `@${currentUser.email.split("@")[0]}` : "@user"),
                     likes: originalData.likes ?? 0,
                     dislikes: originalData.dislikes ?? 0,
@@ -227,7 +230,7 @@ const EditPost = () => {
                 }
                 : {
                     uid: originalData.uid ?? currentUser.uid,
-                    author: originalData.author ?? currentUser.displayName ?? currentUser.email ?? "Unknown",
+                    author: originalData.author ?? currentUser.displayName ?? currentUser.email ?? SHARED_UI_TEXT.UNKNOWN_AUTHOR,
                     handle: originalData.handle ?? (currentUser.email ? `@${currentUser.email.split("@")[0]}` : "@user"),
                     likes: originalData.likes ?? 0,
                     dislikes: originalData.dislikes ?? 0,
@@ -242,9 +245,9 @@ const EditPost = () => {
             await setDoc(targetRef, migratedPayload);
             await deleteDoc(originalRef);
 
-            navigate(selectedPostType === "qna" ? `/qna/${postId}` : `/articles/${postId}`);
+            navigate(selectedPostType === "qna" ? qnaContentRoute(postId) : articleContentRoute(postId));
         } catch (error) {
-            alert(`Failed to update ${isQnA ? "question" : "article"}.`);
+            alert(isQnA ? ALERT_MESSAGES.POST_UPDATE_FAILED_QUESTION : ALERT_MESSAGES.POST_UPDATE_FAILED_ARTICLE);
         } finally {
             setIsSaving(false);
         }
@@ -281,14 +284,14 @@ const EditPost = () => {
                         mb: 8
                     }}
                 >
-                    Edit Post
+                    {POST_EDITOR_UI_TEXT.EDIT_POST_TITLE}
                 </Typography>
 
                 <Box sx={{ width: "100%", maxWidth: "520px", ml: { md: 2 } }}>
                     <TextField
                         fullWidth
                         variant="standard"
-                        placeholder="Title..."
+                        placeholder={POST_EDITOR_UI_TEXT.TITLE_PLACEHOLDER}
                         value={title}
                         onChange={(event) => setTitle(event.target.value)}
                         InputProps={{ disableUnderline: false }}
@@ -300,7 +303,7 @@ const EditPost = () => {
                         variant="standard"
                         multiline
                         minRows={1}
-                        placeholder={isQnA ? "Details..." : "Content..."}
+                        placeholder={isQnA ? POST_EDITOR_UI_TEXT.DETAILS_PLACEHOLDER : POST_EDITOR_UI_TEXT.CONTENT_PLACEHOLDER}
                         value={bodyText}
                         onChange={(event) => setBodyText(event.target.value)}
                         InputProps={{ disableUnderline: false }}
@@ -310,7 +313,7 @@ const EditPost = () => {
                     <TextField
                         fullWidth
                         variant="standard"
-                        placeholder="Image URL (optional)..."
+                        placeholder={POST_EDITOR_UI_TEXT.IMAGE_URL_PLACEHOLDER}
                         value={imageInputValue}
                         onChange={(event) => setImageUrlFromInput(event.target.value)}
                         InputProps={{ disableUnderline: false }}
@@ -324,8 +327,8 @@ const EditPost = () => {
                             onChange={handleTogglePostType}
                             size="small"
                         >
-                            <ToggleButton value="article">Article</ToggleButton>
-                            <ToggleButton value="qna">Q&A</ToggleButton>
+                            <ToggleButton value="article">{POST_EDITOR_UI_TEXT.TYPE_ARTICLE}</ToggleButton>
+                            <ToggleButton value="qna">{POST_EDITOR_UI_TEXT.TYPE_QNA}</ToggleButton>
                         </ToggleButtonGroup>
                     </Box>
 
@@ -346,7 +349,7 @@ const EditPost = () => {
                                 <Box
                                     component="img"
                                     src={previewSrc}
-                                    alt={isQnA ? "Question" : "Article"}
+                                    alt={isQnA ? POST_EDITOR_UI_TEXT.ALT_QUESTION : POST_EDITOR_UI_TEXT.ALT_ARTICLE}
                                     sx={{ width: "100%", height: "100%", objectFit: "cover" }}
                                 />
                             ) : (
@@ -387,7 +390,7 @@ const EditPost = () => {
                             fontWeight: 700
                         }}
                     >
-                        {isSaving ? "Saving..." : isUploadingImage ? "Uploading image..." : "Update"}
+                        {isSaving ? POST_EDITOR_UI_TEXT.SAVE_LOADING : isUploadingImage ? POST_EDITOR_UI_TEXT.IMAGE_UPLOADING : POST_EDITOR_UI_TEXT.UPDATE_ACTION}
                     </Button>
                 </Box>
             </Box>

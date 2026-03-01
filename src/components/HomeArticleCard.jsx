@@ -2,9 +2,8 @@ import React from "react";
 import { Box, Card, CardContent, CardMedia, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import { IMAGE_FALLBACK_SRC } from "../constants/imageFallback";
+import { CARD_UI_TEXT } from "../constants/uiText";
 import VoteButton from "./VoteButton";
-
-const LEGACY_DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1517836357463-d25dfeac3438";
 
 const HomeArticleCard = ({
     title,
@@ -20,7 +19,7 @@ const HomeArticleCard = ({
     disliked = false,
     linkTo
 }) => {
-    const normalizedImage = image === LEGACY_DEFAULT_IMAGE_URL ? "" : image;
+    const normalizedImage = image || "";
 
     const handleLikeClick = (event) => {
         event.preventDefault();
@@ -88,7 +87,7 @@ const HomeArticleCard = ({
                     component="img"
                     height="180"
                     image={normalizedImage}
-                    alt="article"
+                    alt={CARD_UI_TEXT.ARTICLE_IMAGE_ALT}
                     onError={(event) => {
                         event.currentTarget.onerror = null;
                         event.currentTarget.src = IMAGE_FALLBACK_SRC;
@@ -104,7 +103,7 @@ const HomeArticleCard = ({
 
             <Box sx={{ px: 2, pb: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-                    {date || "-"} &nbsp;&nbsp; <b>{author || "Unknown"}</b>
+                    {date || "-"} &nbsp;&nbsp; <b>{author || CARD_UI_TEXT.AUTHOR_FALLBACK}</b>
                 </Typography>
 
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexShrink: 0 }}>
