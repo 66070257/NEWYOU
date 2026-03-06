@@ -20,6 +20,7 @@ const HomeArticleCard = ({
     linkTo
 }) => {
     const normalizedImage = image || "";
+    const hasImage = Boolean(normalizedImage);
 
     const handleLikeClick = (event) => {
         event.preventDefault();
@@ -72,17 +73,17 @@ const HomeArticleCard = ({
                     color="text.secondary"
                     sx={{
                         display: "-webkit-box",
-                        WebkitLineClamp: 4,
+                        WebkitLineClamp: hasImage ? 4 : 10,
                         WebkitBoxOrient: "vertical",
                         overflow: "hidden",
-                        minHeight: "80px"
+                        minHeight: hasImage ? "80px" : "260px"
                     }}
                 >
                     {description}
                 </Typography>
             </CardContent>
 
-            {normalizedImage ? (
+            {hasImage ? (
                 <CardMedia
                     component="img"
                     height="180"
@@ -102,7 +103,17 @@ const HomeArticleCard = ({
             ) : null}
 
             <Box sx={{ px: 2, pb: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                    }}
+                >
                     {date || "-"} &nbsp;&nbsp; <b>{author || CARD_UI_TEXT.AUTHOR_FALLBACK}</b>
                 </Typography>
 
